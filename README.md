@@ -333,5 +333,3 @@ The compiled APK will be generated at:
 
 Copyright © 2026 eFormX. All rights reserved.
 
-#   e f r o m x - a p p  
- 
