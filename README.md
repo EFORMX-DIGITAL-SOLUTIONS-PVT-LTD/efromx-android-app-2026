@@ -371,14 +371,63 @@ Control browser navigation dynamically using query parameters attached to any UR
 | **`callback=app`** | `callback=app` (also supports `calback=app`) | **Forces App WebView:** Overrides `browser=external` and keeps navigation inside the native App WebView. Ideal for payment callbacks and redirect URLs. |
 | **`share_link=true`** | `share_link=true` | **Web Share Override:** Overrides external browser redirection to process Web Share sheets (`navigator.share`) directly inside app. |
 
-##### Example Usage:
+##### 3️⃣ HTML Testing Snippets (Ready to Use)
 
+###### 📄 HTML Code 1: Custom Deep Link (`eformx://`) Testing Page
 ```html
-<!-- Open link in external Chrome browser -->
-<a href="https://external-site.com/docs?browser=external">Open in Chrome</a>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eFormX Deep Link Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .btn { display: inline-block; background: #007bff; color: #fff; padding: 12px 20px; text-decoration: none; border-radius: 6px; margin: 10px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>🔗 eFormX Deep Link Testing</h2>
+    <p>Tap below links inside Chrome or another app to trigger eFormX app opening:</p>
+    
+    <!-- Test eformx:// Custom Scheme -->
+    <a href="eformx://apply.eformx.com/status?id=1001" class="btn">Test eformx:// Custom Deep Link</a>
+    
+    <!-- Test HTTPS App Link -->
+    <a href="https://apply.eformx.com/status?id=1001" class="btn" style="background: #28a745;">Test HTTPS App Link</a>
+</body>
+</html>
+```
 
-<!-- Payment gateway callback returning back to app WebView -->
-<a href="https://apply.eformx.com/success.php?callback=app">Return to App</a>
+###### 📄 HTML Code 2: URL Query Parameters (`browser=external` & `callback=app`) Testing Page
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eFormX Query Parameters Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .btn { display: block; background: #17a2b8; color: #fff; padding: 14px 20px; text-decoration: none; border-radius: 6px; margin: 12px 0; text-align: center; font-weight: bold; }
+        .external { background: #dc3545; }
+        .callback { background: #28a745; }
+    </style>
+</head>
+<body>
+    <h2>🚀 eFormX URL Query Parameter Test</h2>
+
+    <!-- Test 1: Open in External Chrome Browser -->
+    <a href="https://google.com?browser=external" class="btn external">1. Open Google in Chrome (browser=external)</a>
+
+    <!-- Test 2: Stay/Return inside App WebView -->
+    <a href="https://apply.eformx.com/success.php?callback=app" class="btn callback">2. Return to App WebView (callback=app)</a>
+
+    <!-- Test 3: Legacy Spellings Test -->
+    <a href="https://eformx.com?browser=extrunal" class="btn external">3. Test Legacy Spelling (browser=extrunal)</a>
+    <a href="https://eformx.com?calback=app" class="btn callback">4. Test Legacy Callback (calback=app)</a>
+</body>
+</html>
 ```
 
 ---
