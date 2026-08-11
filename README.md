@@ -18,13 +18,21 @@ Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GP
 
 | Method | Parameters | Return Type | Description | JavaScript Usage Example |
 | :--- | :--- | :--- | :--- | :--- |
+| **`Android.getFcmToken()`** | None | `String` | Returns device's Firebase Push Notification Registration Token string | `let token = Android.getFcmToken();` |
 | **`Android.getLocation()`** | None | `String` (JSON) | Returns GPS Latitude, Longitude, Accuracy, Altitude, Speed, Time JSON | `let loc = JSON.parse(Android.getLocation());` |
-| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Brand, Model, Device, Product, OS Version, SDK Level, Language, Country, TimeZone, Screen Dimensions, App Version, Package Name) | `let info = JSON.parse(Android.getDeviceInfo());` |
+| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Brand, Model, Device, Product, OS Version, SDK Level, Language, Country, TimeZone, Screen Dimensions, App Version, Package Name, FCM Token) | `let info = JSON.parse(Android.getDeviceInfo());` |
 | **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();` |
-| **`Android.getAppVersion()`** | None | `String` | Returns App Version Name (e.g. `"1.0"`) | `let ver = Android.getAppVersion();` |
+| **`Android.getAppVersion()`** | None | `String` | Returns App Version Name (e.g. `"1.4"`) | `let ver = Android.getAppVersion();` |
 | **`Android.getPackageName()`** | None | `String` | Returns Package Identifier (`"eformx.app"`) | `let pkg = Android.getPackageName();` |
+| **`Android.getIpAddress()`** | None | `String` | Returns device local IPv4 address string (e.g. `"192.168.1.35"`) | `let ip = Android.getIpAddress();` |
+| **`Android.getNetworkType()`** | None | `String` | Returns network type (`"WIFI"`, `"CELLULAR_MOBILE"`, `"OFFLINE"`) | `let netType = Android.getNetworkType();` |
+| **`Android.getNetworkOperator()`** | None | `String` | Returns SIM carrier operator name (e.g. `"Jio"`, `"Airtel"`) | `let op = Android.getNetworkOperator();` |
 | **`Android.isNetworkAvailable()`** | None | `boolean` | Returns active internet connection state (`true`/`false`) | `let online = Android.isNetworkAvailable();` |
 | **`Android.speak(text)`** | `text` (String) | `void` | Speaks text using native Android Text-to-Speech engine | `Android.speak('Hello from eFormX');` |
+| **`Android.hasLocationPermission()`** | None | `boolean` | Checks if Location permission (`ACCESS_FINE_LOCATION`) is granted | `let hasLoc = Android.hasLocationPermission();` |
+| **`Android.hasNotificationPermission()`** | None | `boolean` | Checks if Notification permission (`POST_NOTIFICATIONS`) is granted | `let hasNotify = Android.hasNotificationPermission();` |
+| **`Android.requestAllPermissions()`** | None | `void` | Triggers prompt for all missing permissions (Notifications, Location GPS) | `Android.requestAllPermissions();` |
+| **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();` |
 | **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
 
 ---
@@ -72,9 +80,195 @@ if (navigator.geolocation) {
 
 ---
 
+### 🌐 Complete Web Portal Demo HTML Code (`index.html`)
+
+Web developers can save this complete HTML5 file as `index.html` on their web server (`https://apply.eformx.com`) to test all native eFormX Android features, device identification, GPS coordinates, TTS, permissions, and deep links:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eFormX Native Features Test Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
+        body { background: #0f172a; color: #f8fafc; padding: 16px; min-height: 100vh; }
+        .header { text-align: center; padding: 20px 0; border-bottom: 1px solid #1e293b; margin-bottom: 20px; }
+        .header h1 { color: #38bdf8; font-size: 24px; font-weight: 700; }
+        .header p { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+        .grid-container { display: grid; grid-template-columns: 1fr; gap: 16px; max-width: 600px; margin: 0 auto; }
+        .card { background: rgba(30, 41, 59, 0.7); border: 1px solid #334155; border-radius: 16px; padding: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+        .card h2 { font-size: 16px; color: #f1f5f9; margin-bottom: 12px; }
+        .btn { width: 100%; padding: 12px 16px; border: none; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+        .btn-primary { background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff; }
+        .btn-success { background: linear-gradient(135deg, #059669, #10b981); color: #ffffff; }
+        .btn-warning { background: linear-gradient(135deg, #d97706, #f59e0b); color: #ffffff; }
+        .btn-purple { background: linear-gradient(135deg, #7c3aed, #9333ea); color: #ffffff; }
+        .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 12px; border: 1px solid #475569; background: #0f172a; color: #ffffff; font-size: 14px; }
+        .output-box { background: #090d16; border: 1px solid #1e293b; border-radius: 12px; padding: 12px; font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; max-height: 150px; overflow-y: auto; margin-top: 10px; }
+        .badge-green { background: #065f46; color: #34d399; padding: 2px 6px; border-radius: 4px; }
+        .badge-red { background: #991b1b; color: #fca5a5; padding: 2px 6px; border-radius: 4px; }
+        .link-item { color: #38bdf8; text-decoration: none; font-size: 14px; display: block; margin-bottom: 8px; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>eFormX Native Bridge Tester</h1>
+        <p>Comprehensive Android Feature Verification</p>
+    </div>
+
+    <div class="grid-container">
+
+        <!-- 1. Device Info & Identification -->
+        <div class="card">
+            <h2>📱 Device Information & Tokens</h2>
+            <button class="btn btn-primary" onclick="testGetDeviceId()">Get Device ID</button>
+            <button class="btn btn-primary" onclick="testGetFcmToken()">Get FCM Push Token</button>
+            <button class="btn btn-primary" onclick="testGetAppVersion()">Get App Version</button>
+            <button class="btn btn-primary" onclick="testGetPackageName()">Get Package Name</button>
+            <button class="btn btn-primary" onclick="testIsNetworkAvailable()">Check Network Status</button>
+            <button class="btn btn-warning" onclick="testGetDeviceInfo()">Get Complete Device Specs JSON</button>
+            <div id="deviceOutput" class="output-box">Click any button above to see result...</div>
+        </div>
+
+        <!-- 2. GPS Location & Coordinates -->
+        <div class="card">
+            <h2>📍 GPS Location & Coordinates</h2>
+            <button class="btn btn-success" onclick="testGetLocation()">Get GPS Coordinates (Native Bridge)</button>
+            <button class="btn btn-success" onclick="testHtml5Geolocation()">Get Location (HTML5 Geolocation)</button>
+            <button class="btn btn-primary" onclick="testCheckLocationPermission()">Check Location Permission</button>
+            <button class="btn btn-warning" onclick="testOpenLocationPermission()">Request Location Permission Dialog</button>
+            <div id="locationOutput" class="output-box">Location result will appear here...</div>
+        </div>
+
+        <!-- 3. Text to Speech (TTS) -->
+        <div class="card">
+            <h2>🔊 Text-to-Speech (Voice Output)</h2>
+            <div class="input-group">
+                <input type="text" id="ttsInput" value="Namaste, eFormX Android App me aapka swagat hai.">
+                <button class="btn btn-purple" style="width: auto;" onclick="testSpeak()">Speak</button>
+            </div>
+        </div>
+
+        <!-- 4. Permission Status & Prompt -->
+        <div class="card">
+            <h2>🛡️ Permissions Management</h2>
+            <button class="btn btn-primary" onclick="testCheckPermissions()">Check Permission Statuses</button>
+            <button class="btn btn-warning" onclick="testRequestAllPermissions()">Request All Pending Permissions</button>
+            <div id="permissionOutput" class="output-box">Permission statuses will appear here...</div>
+        </div>
+
+        <!-- 5. Deep Links & External Navigation -->
+        <div class="card">
+            <h2>🔗 Deep Links & External Browsing</h2>
+            <a href="https://apply.eformx.com/portal.php?browser=external" class="link-item">🌐 Open in Chrome External Browser (?browser=external)</a>
+            <a href="eformx://apply/test_deep_link" class="link-item">🚀 Test Custom Deep Link (eformx://apply/test_deep_link)</a>
+            <a href="https://wa.me/919876543210?text=Namaste%20eFormX" class="link-item">💬 Open WhatsApp Native Chat</a>
+        </div>
+
+    </div>
+
+    <script>
+        function isBridgeAvailable() { return typeof window.Android !== 'undefined'; }
+
+        function testGetDeviceId() {
+            let out = document.getElementById('deviceOutput');
+            out.innerHTML = isBridgeAvailable() && window.Android.getDeviceId ? "<b>Device ID:</b> " + window.Android.getDeviceId() : "Open inside eFormX App";
+        }
+
+        function testGetFcmToken() {
+            let out = document.getElementById('deviceOutput');
+            out.innerHTML = isBridgeAvailable() && window.Android.getFcmToken ? "<b>FCM Token:</b><br>" + window.Android.getFcmToken() : "Open inside eFormX App";
+        }
+
+        function testGetAppVersion() {
+            let out = document.getElementById('deviceOutput');
+            out.innerHTML = isBridgeAvailable() && window.Android.getAppVersion ? "<b>App Version:</b> " + window.Android.getAppVersion() : "Web Browser";
+        }
+
+        function testGetPackageName() {
+            let out = document.getElementById('deviceOutput');
+            out.innerHTML = isBridgeAvailable() && window.Android.getPackageName ? "<b>Package:</b> " + window.Android.getPackageName() : "eformx.app";
+        }
+
+        function testIsNetworkAvailable() {
+            let out = document.getElementById('deviceOutput');
+            let online = isBridgeAvailable() && window.Android.isNetworkAvailable ? window.Android.isNetworkAvailable() : navigator.onLine;
+            out.innerHTML = "<b>Network Status:</b> " + (online ? "<span class='badge-green'>ONLINE</span>" : "<span class='badge-red'>OFFLINE</span>");
+        }
+
+        function testGetDeviceInfo() {
+            let out = document.getElementById('deviceOutput');
+            if (isBridgeAvailable() && window.Android.getDeviceInfo) {
+                try { out.innerHTML = "<pre>" + JSON.stringify(JSON.parse(window.Android.getDeviceInfo()), null, 2) + "</pre>"; }
+                catch(e) { out.innerHTML = window.Android.getDeviceInfo(); }
+            } else { out.innerHTML = "Open inside eFormX App"; }
+        }
+
+        function testGetLocation() {
+            let out = document.getElementById('locationOutput');
+            if (isBridgeAvailable() && window.Android.getLocation) {
+                try {
+                    let loc = JSON.parse(window.Android.getLocation());
+                    out.innerHTML = !loc.error ? "<b>Lat:</b> " + loc.latitude + "<br><b>Lng:</b> " + loc.longitude + "<br><b>Accuracy:</b> " + loc.accuracy + "m" : loc.message;
+                } catch(e) { out.innerHTML = window.Android.getLocation(); }
+            } else { out.innerHTML = "Native getLocation not available"; }
+        }
+
+        function testHtml5Geolocation() {
+            let out = document.getElementById('locationOutput');
+            out.innerHTML = "Requesting HTML5 Geolocation...";
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(p) { out.innerHTML = "<b>HTML5 Lat:</b> " + p.coords.latitude + "<br><b>HTML5 Lng:</b> " + p.coords.longitude; },
+                    function(e) { out.innerHTML = "Error: " + e.message; }
+                );
+            }
+        }
+
+        function testCheckLocationPermission() {
+            let out = document.getElementById('locationOutput');
+            let hasLoc = isBridgeAvailable() && window.Android.hasLocationPermission ? window.Android.hasLocationPermission() : false;
+            out.innerHTML = "<b>Location Permission:</b> " + (hasLoc ? "<span class='badge-green'>GRANTED</span>" : "<span class='badge-red'>DENIED</span>");
+        }
+
+        function testOpenLocationPermission() {
+            if (isBridgeAvailable() && window.Android.openLocationPermission) window.Android.openLocationPermission();
+        }
+
+        function testSpeak() {
+            let text = document.getElementById('ttsInput').value;
+            if (isBridgeAvailable() && window.Android.speak) window.Android.speak(text);
+        }
+
+        function testCheckPermissions() {
+            let out = document.getElementById('permissionOutput');
+            if (isBridgeAvailable()) {
+                let hasLoc = window.Android.hasLocationPermission ? window.Android.hasLocationPermission() : false;
+                let hasNotify = window.Android.hasNotificationPermission ? window.Android.hasNotificationPermission() : false;
+                out.innerHTML = "<b>Location:</b> " + (hasLoc ? "<span class='badge-green'>ALLOWED</span>" : "<span class='badge-red'>PENDING</span>") +
+                                "<br><b>Notifications:</b> " + (hasNotify ? "<span class='badge-green'>ALLOWED</span>" : "<span class='badge-red'>PENDING</span>");
+            }
+        }
+
+        function testRequestAllPermissions() {
+            if (isBridgeAvailable() && window.Android.requestAllPermissions) window.Android.requestAllPermissions();
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
 ### 🔔 Push Notifications & FCM Engine (`MyFirebaseMessagingService`)
 - **FCM Data-Only High Priority Delivery:** Background & foreground push notification engine supporting custom titles, messages, big picture images, and custom target URLs.
 - **Continuous Speech Announcements:** Text-to-Speech (TTS) engine (`speakOutText`) continuously loops speech announcements during call notifications.
+- **Device Reboot / Restart Survival:** Declares `RECEIVE_BOOT_COMPLETED` permission and relies on Google Play Services daemon so push notifications and call alerts continue working 100% reliably even after phone restart or power-off.
 - **OPPO / ColorOS Background Execution:** Wakes up CPU and Screen from deep sleep using `PowerManager.WakeLock` (`FULL_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP`) for guaranteed background delivery when the app is closed or killed.
 - **Branded Notification Cards:** Displays the official eFormX App Logo (`ic_launcher`) clearly on notification cards.
 
@@ -127,7 +321,7 @@ curl -X POST http://localhost:3000/api/send-notification \
 | JSON Key / Parameter | Type | Default Value | Value Options / Example | Effect & App Behavior |
 | :--- | :--- | :--- | :--- | :--- |
 | **`token`** | `String` | *(Empty)* | `"eX8kL1mN...xyz"` | **Single User Target:** When provided, notification is sent ONLY to this 1 specific user device. |
-| **`topic`** | `String` | `"all"` | `"all"` | **Mass Broadcast:** When `token` is omitted, broadcasts notification to ALL 500+ registered users. |
+| **`topic`** | `String` | `"all"` | `"all"` | **Mass Unlimited Broadcast:** When `token` is omitted, broadcasts notification simultaneously to ALL registered users (Unlimited: 1 Lakh+ / 100,000+ devices via topic `"all"`). |
 | **`title`** | `String` | `"eFormX Notification"` | `"📞 Incoming Call Request"` | Sets the bold header title displayed on the Android notification card. |
 | **`message`** (or `body`) | `String` | `"You have a new update."` | `"Namaste, Admin is calling..."` | Sets the description text body on the notification card. |
 | **`speak_text`** (or `tts_text`)| `String` | *(Message Body)* | `"Namaste Ramesh, Admin call kar rahe hain."` | **Continuous Speech Loop:** Triggers native Text-to-Speech to continuously speak this text until swiped, opened, or volume muted! |

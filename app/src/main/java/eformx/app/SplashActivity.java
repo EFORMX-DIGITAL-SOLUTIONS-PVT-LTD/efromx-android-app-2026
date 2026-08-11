@@ -218,13 +218,27 @@ public class SplashActivity extends Activity {
         progressRingView.setProgressDirect(1.0f / 4.0f);
 
         View.OnClickListener finishOnboarding = v -> {
+            java.util.List<String> permissionsToRequest = new java.util.ArrayList<>();
+
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                 if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
-                    return;
+                    permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS);
                 }
             }
-            proceedAfterPermission();
+
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+            }
+
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+            }
+
+            if (!permissionsToRequest.isEmpty()) {
+                requestPermissions(permissionsToRequest.toArray(new String[0]), 101);
+            } else {
+                proceedAfterPermission();
+            }
         };
 
         nextBtnContainer.setOnClickListener(v -> {
@@ -463,16 +477,82 @@ public class SplashActivity extends Activity {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             card.addView(ribbonTv, ribbonParams);
         } else {
-            // Slide 3: Permissions & Benefits Card
+            // Slide 4: Permissions & Benefits Card with Interactive Allow Buttons
             LinearLayout permList = new LinearLayout(this);
             permList.setOrientation(LinearLayout.VERTICAL);
             permList.setGravity(Gravity.CENTER_VERTICAL);
-            permList.setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+            permList.setPadding(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
 
-            permList.addView(createPermissionRow("🔔", "नोटिफिकेशन (Notifications)", "कॉल अलर्ट और सर्विस अपडेट तुरंत पाने के लिए।"));
-            permList.addView(createPermissionRow("⚡", "ऑटो-स्टार्ट (Auto-Start)", "ऐप बंद होने पर भी कॉल और अलर्ट बजने के लिए।"));
-            permList.addView(createPermissionRow("📁", "स्टोरेज (Storage & Downloads)", "फॉर्म रिसीप्ट्स और डाक्यूमेंट्स डाउनलोड करने के लिए।"));
+            boolean hasNotification = true;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                hasNotification = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
 
+            boolean hasLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                                  checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+
+            final boolean finalHasNotify = hasNotification;
+            permList.addView(createPermissionRow("🔔", "नोटिफिकेशन (Notifications)", "कॉल अलर्ट और अपडेट तुरंत पाने के लिए।", hasNotification, v -> {
+                if (!finalHasNotify && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+                }
+            }));
+
+            final boolean finalHasLoc = hasLocation;
+            permList.addView(createPermissionRow("📍", "स्थान (GPS Location)", "स्थान सेवाओं के लिए लोकेशन उपयोग करने के लिए।", hasLocation, v -> {
+                if (!finalHasLoc) {
+                    requestPermissions(new String[]{
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    }, 101);
+                }
+            }));
+
+            permList.addView(createPermissionRow("⚡", "ऑटो-स्टार्ट (Auto-Start)", "ऐप बंद होने पर भी कॉल और अलर्ट बजने के लिए।", false, v -> {
+                checkAndRequestAutoStartPermission();
+            }));
+
+            // Prominent "Allow All Permissions / अनुमति दें ➔" Action Button inside card
+            TextView allowAllBtn = new TextView(this);
+            boolean allGranted = finalHasNotify && finalHasLoc;
+            allowAllBtn.setText(allGranted ? "Continue to App  ➔" : "Allow All Permissions (अनुमति दें)  ➔");
+            allowAllBtn.setTextSize(13);
+            allowAllBtn.setTextColor(Color.WHITE);
+            allowAllBtn.setTypeface(Typeface.DEFAULT_BOLD);
+            allowAllBtn.setGravity(Gravity.CENTER);
+            allowAllBtn.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+
+            GradientDrawable btnBg = new GradientDrawable();
+            btnBg.setColor(Color.parseColor(allGranted ? "#059669" : "#0052FF"));
+            btnBg.setCornerRadius(dpToPx(14));
+            allowAllBtn.setBackground(btnBg);
+
+            LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            btnParams.topMargin = dpToPx(8);
+            allowAllBtn.setLayoutParams(btnParams);
+
+            allowAllBtn.setOnClickListener(v -> {
+                java.util.List<String> permissionsToRequest = new java.util.ArrayList<>();
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS);
+                    }
+                }
+                if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+                }
+                if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+                }
+                if (!permissionsToRequest.isEmpty()) {
+                    requestPermissions(permissionsToRequest.toArray(new String[0]), 101);
+                } else {
+                    proceedAfterPermission();
+                }
+            });
+
+            permList.addView(allowAllBtn);
             card.addView(permList);
         }
 
@@ -559,7 +639,7 @@ public class SplashActivity extends Activity {
         return item;
     }
 
-    private View createPermissionRow(String icon, String title, String benefit) {
+    private View createPermissionRow(String icon, String title, String benefit, boolean isGranted, View.OnClickListener onAllowClick) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -578,7 +658,7 @@ public class SplashActivity extends Activity {
 
         LinearLayout textContainer = new LinearLayout(this);
         textContainer.setOrientation(LinearLayout.VERTICAL);
-        textContainer.setPadding(dpToPx(10), 0, 0, 0);
+        textContainer.setPadding(dpToPx(10), 0, dpToPx(6), 0);
 
         TextView titleTv = new TextView(this);
         titleTv.setText(title);
@@ -594,8 +674,30 @@ public class SplashActivity extends Activity {
         textContainer.addView(titleTv);
         textContainer.addView(benefitTv);
 
+        TextView actionBtn = new TextView(this);
+        actionBtn.setTextSize(11);
+        actionBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        actionBtn.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6));
+
+        GradientDrawable btnBg = new GradientDrawable();
+        if (isGranted) {
+            actionBtn.setText("✔ Allowed");
+            actionBtn.setTextColor(Color.parseColor("#059669"));
+            btnBg.setColor(Color.parseColor("#E6F4EA"));
+            btnBg.setCornerRadius(dpToPx(10));
+        } else {
+            actionBtn.setText("Allow >");
+            actionBtn.setTextColor(Color.parseColor("#FF6B00"));
+            btnBg.setColor(Color.parseColor("#FFF3E0"));
+            btnBg.setCornerRadius(dpToPx(10));
+            btnBg.setStroke(dpToPx(1), Color.parseColor("#FFE0B2"));
+            actionBtn.setOnClickListener(onAllowClick);
+        }
+        actionBtn.setBackground(btnBg);
+
         row.addView(iconTv);
         row.addView(textContainer, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        row.addView(actionBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

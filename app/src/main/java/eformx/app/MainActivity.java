@@ -103,12 +103,7 @@ public class MainActivity extends ComponentActivity {
         );
 
         androidBridge = new AndroidBridge(this, locationPermissionLauncher);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
-            }
-        }
+        checkAndRequestAllPermissions();
 
         com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
@@ -1092,7 +1087,7 @@ public class MainActivity extends ComponentActivity {
         super.onDestroy();
     }
 
-    private void showExitConfirmationDialog() {
+    public void showExitConfirmationDialog() {
         try {
             new android.app.AlertDialog.Builder(this)
                     .setTitle("Exit App?")
@@ -1123,6 +1118,11 @@ public class MainActivity extends ComponentActivity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            String currentUrl = webView != null ? webView.getUrl() : null;
+            if (currentUrl != null && currentUrl.contains("android=exit")) {
+                showExitConfirmationDialog();
+                return true;
+            }
             if (webView != null && webView.canGoBack()) {
                 webView.goBack();
                 return true;
@@ -1158,6 +1158,32 @@ public class MainActivity extends ComponentActivity {
             }
         } catch (Exception e) {
             android.util.Log.e("AutoStart", "Unable to open Auto-Start settings: " + e.getMessage());
+        }
+    }
+
+    public void checkAndRequestAllPermissions() {
+        try {
+            java.util.List<String> permissionsToRequest = new java.util.ArrayList<>();
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS);
+                }
+            }
+
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+            }
+
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+            }
+
+            if (!permissionsToRequest.isEmpty()) {
+                locationPermissionLauncher.launch(permissionsToRequest.toArray(new String[0]));
+            }
+        } catch (Exception e) {
+            android.util.Log.e("Permissions", "Error checking/requesting permissions: " + e.getMessage());
         }
     }
 }

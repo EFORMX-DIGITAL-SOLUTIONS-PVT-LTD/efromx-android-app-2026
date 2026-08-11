@@ -151,6 +151,12 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     public void onNewToken(@NonNull String token) {
         super.onNewToken(token);
         Log.d(TAG, "Refreshed FCM Token: " + token);
+        try {
+            getSharedPreferences("eformx_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putString("fcm_token", token)
+                    .apply();
+        } catch (Exception ignored) {}
     }
 
     private void sendNotification(String title, String messageBody, String targetUrl, String openType, String imageUrl, String soundType, String speakText) {
