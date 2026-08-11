@@ -145,7 +145,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             }
         }
 
-        sendNotification(title, messageBody, targetUrl, openType, imageUrl, soundType, speakText);
+        sendNotification(title, messageBody, targetUrl, openType, imageUrl, soundType, speakText, audioUrl);
     }
 
     @Override
@@ -160,7 +160,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         } catch (Exception ignored) {}
     }
 
-    private void sendNotification(String title, String messageBody, String targetUrl, String openType, String imageUrl, String soundType, String speakText) {
+    private void sendNotification(String title, String messageBody, String targetUrl, String openType, String imageUrl, String soundType, String speakText, String audioUrl) {
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (targetUrl != null && !targetUrl.isEmpty()) {
@@ -178,6 +178,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         boolean isCallNotification = "ringtone".equalsIgnoreCase(soundType) || "call".equalsIgnoreCase(soundType);
         boolean isAlarmNotification = "alarm".equalsIgnoreCase(soundType);
+        boolean isAudioNotification = audioUrl != null && !audioUrl.trim().isEmpty();
+        boolean isVoiceNotification = speakText != null && !speakText.trim().isEmpty();
 
         if (isCallNotification) {
             channelId = "eformx_call_voice_channel_v1";
@@ -187,9 +189,12 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             channelId = "eformx_alarm_voice_channel_v1";
             category = NotificationCompat.CATEGORY_ALARM;
             soundUri = null;
-        } else {
-            channelId = "eformx_voice_channel_v2";
+        } else if (isAudioNotification || isVoiceNotification) {
+            channelId = "eformx_voice_speech_channel_v3";
             soundUri = null;
+        } else {
+            channelId = "eformx_standard_channel_v3";
+            soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         }
 
         Intent deleteIntent = new Intent(this, NotificationDismissReceiver.class);
@@ -219,6 +224,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         if (soundUri != null) {
             notificationBuilder.setSound(soundUri);
             notificationBuilder.setDefaults(NotificationCompat.DEFAULT_ALL);
+        } else {
+            notificationBuilder.setDefaults(NotificationCompat.DEFAULT_VIBRATE);
         }
 
         if (imageUrl != null && !imageUrl.isEmpty()) {
@@ -238,27 +245,40 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             String channelName = "eFormX General Notifications";
-            int usage = AudioAttributes.USAGE_NOTIFICATION;
-
-            if ("eformx_call_voice_channel_v1".equals(channelId)) {
-                channelName = "eFormX Incoming Call Voice";
-            } else if ("eformx_alarm_voice_channel_v1".equals(channelId)) {
-                channelName = "eFormX Alarm Voice Notifications";
-            } else {
-                channelName = "eFormX Voice Speech Notifications";
-            }
 
             NotificationChannel channel = new NotificationChannel(
                     channelId,
                     channelName,
                     NotificationManager.IMPORTANCE_HIGH
             );
+
+            if ("eformx_call_voice_channel_v1".equals(channelId)) {
+                channelName = "eFormX Incoming Call Voice";
+                channel.setName(channelName);
+                channel.setSound(null, null);
+            } else if ("eformx_alarm_voice_channel_v1".equals(channelId)) {
+                channelName = "eFormX Alarm Voice Notifications";
+                channel.setName(channelName);
+                channel.setSound(null, null);
+            } else if ("eformx_voice_speech_channel_v3".equals(channelId)) {
+                channelName = "eFormX Voice Speech Notifications";
+                channel.setName(channelName);
+                channel.setSound(null, null);
+            } else {
+                channelName = "eFormX Standard Notifications";
+                channel.setName(channelName);
+                AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .build();
+                channel.setSound(soundUri, audioAttributes);
+            }
+
             channel.setDescription("High priority channel for eFormX Notifications");
             channel.enableVibration(true);
             channel.enableLights(true);
             channel.setBypassDnd(true);
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            channel.setSound(null, null);
 
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
@@ -378,16 +398,22 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 mediaPlayer = new MediaPlayer();
                 mediaPlayer.setAudioAttributes(
                         new AudioAttributes.Builder()
-                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                                 .build()
                 );
                 mediaPlayer.setDataSource(audioUrl);
-                mediaPlayer.prepareAsync();
-                mediaPlayer.setOnPreparedListener(MediaPlayer::start);
-                mediaPlayer.setOnCompletionListener(mp -> {
-                    try { mp.release(); } catch (Exception ignored) {}
+                mediaPlayer.setOnPreparedListener(mp -> {
+                    try {
+                        mp.start();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error starting custom audio: " + e.getMessage());
+                    }
                 });
+                mediaPlayer.setOnCompletionListener(mp -> {
+                    try { mp.release(); mediaPlayer = null; } catch (Exception ignored) {}
+                });
+                mediaPlayer.prepareAsync();
             } catch (Exception e) {
                 Log.e(TAG, "Error playing custom audio URL: " + e.getMessage());
             }

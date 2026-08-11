@@ -361,52 +361,116 @@ The application provides three immediate methods to stop background audio and re
 
 ### 📡 Master FCM Notification API Reference (`POST /api/send-notification`)
 
-Use a single unified API endpoint (`http://localhost:3000/api/send-notification`) to dispatch notifications. Customize payload behavior by adding or changing key parameters in the Master JSON Schema.
+Use a single unified API endpoint (`http://localhost:3000/api/send-notification`) to dispatch notifications. Customize payload behavior by adding or building upon the Base Default Schema.
 
-#### 1️⃣ Master Unified JSON Schema
+#### 1️⃣ Base Default Payload (Standard Notification)
+```json
+{
+  "title": "eFormX Digital Services",
+  "message": "Your application update is available."
+}
+```
 
+#### 2️⃣ Master Unified JSON Schema (All Supported Attributes)
 ```json
 {
   "token": "OPTIONAL_SPECIFIC_USER_FCM_TOKEN",
   "topic": "all",
-  "title": "Notification Title",
-  "message": "Message text description",
-  "speak_text": "Text to speak out loud continuously",
-  "sound_type": "ringtone",
-  "image_url": "https://apply.eformx.com/banner.jpg",
+  "title": "eFormX Notification",
+  "message": "You have a new update.",
   "target_url": "https://apply.eformx.com/status.php?id=123",
-  "open_type": "app_webview",
-  "audio_url": "https://apply.eformx.com/chime.mp3"
+  "image_url": "https://apply.eformx.com/banner.jpg",
+  "speak_text": "Hindi or English voice speech text",
+  "audio_url": "http://eformx.com/sample.mp3",
+  "sound_type": "notification",
+  "open_type": "app_webview"
 }
-```
-
-```bash
-curl -X POST http://localhost:3000/api/send-notification \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "📞 eFormX Call Alert",
-    "message": "Namaste, EFORMX call notification.",
-    "speak_text": "Namaste, EFORMX call notification.",
-    "sound_type": "ringtone"
-  }'
 ```
 
 ---
 
-#### 2️⃣ JSON Field Parameter Effect Table
+#### 3️⃣ All 7 Supported Notification Types & Payload Examples
+
+##### 1. 📩 Standard Text Notification (Default Tone, No Voice)
+```json
+{
+  "title": "eFormX Application Alert",
+  "message": "Your eFormX digital application status has been updated."
+}
+```
+
+##### 2. 🖼️ Big Picture / Banner Image Notification
+```json
+{
+  "title": "eFormX Special Offer",
+  "message": "Check out the latest digital scheme banner.",
+  "image_url": "https://picsum.photos/800/400"
+}
+```
+
+##### 3. 🗣️ Voice TTS Notification (Reads Text Out Loud, Silent Chime)
+```json
+{
+  "title": "eFormX Voice Alert",
+  "message": "Your form has been submitted successfully.",
+  "speak_text": "Hello, your eFormX digital application has been submitted successfully."
+}
+```
+
+##### 4. 🎵 Custom MP3 Audio Notification (Instant Stream Play, Silent Chime)
+```json
+{
+  "title": "eFormX Custom Audio Alert",
+  "message": "Playing custom online MP3 audio sound.",
+  "audio_url": "http://eformx.com/sample.mp3"
+}
+```
+
+##### 5. 📞 Incoming Call Alert Notification (Repeating Ringtone Loop + WakeLock)
+```json
+{
+  "title": "📞 Incoming Call Request",
+  "message": "Admin is calling from eFormX portal...",
+  "sound_type": "ringtone",
+  "speak_text": "Incoming call request from admin."
+}
+```
+
+##### 6. ⏰ Urgent Alarm Notification (High Priority Alarm Category)
+```json
+{
+  "title": "⏰ Critical Deadline Warning",
+  "message": "Your document submission deadline is expiring today.",
+  "sound_type": "alarm",
+  "speak_text": "Attention! Your document submission deadline is expiring today."
+}
+```
+
+##### 7. 🔗 Web / Deep Link Notification (Opens URL inside App WebView)
+```json
+{
+  "title": "eFormX Web Portal",
+  "message": "Tap to open the application portal.",
+  "target_url": "https://apply.eformx.com"
+}
+```
+
+---
+
+#### 4️⃣ JSON Field Parameter Effect Table
 
 | JSON Key / Parameter | Type | Default Value | Value Options / Example | Effect & App Behavior |
 | :--- | :--- | :--- | :--- | :--- |
 | **`token`** | `String` | *(Empty)* | `"eX8kL1mN...xyz"` | **Single User Target:** When provided, notification is sent ONLY to this 1 specific user device. |
 | **`topic`** | `String` | `"all"` | `"all"` | **Mass Unlimited Broadcast:** When `token` is omitted, broadcasts notification simultaneously to ALL registered users (Unlimited: 1 Lakh+ / 100,000+ devices via topic `"all"`). |
-| **`title`** | `String` | `"eFormX Notification"` | `"📞 Incoming Call Request"` | Sets the bold header title displayed on the Android notification card. |
-| **`message`** (or `body`) | `String` | `"You have a new update."` | `"Namaste, Admin is calling..."` | Sets the description text body on the notification card. |
-| **`speak_text`** (or `tts_text`)| `String` | *(Message Body)* | `"Namaste Ramesh, Admin call kar rahe hain."` | **Text-to-Speech Output:** Triggers native Hindi/English voice speech. Speaks **1 TIME ONLY** for `"sound_type": "notification"`, and **LOOPS CONTINUOUSLY** for `"sound_type": "ringtone"` / `"call"`. |
-| **`sound_type`** (or `sound`)| `String` | `"notification"` | `"ringtone"` / `"call"` / `"notification"` / `"silent"` | `"notification"` = Standard Beep + Speaks Voice **1 Time Only**; `"ringtone"` / `"call"` = High Priority Call Alert + **Repeating Continuous Voice Speech Loop**. |
+| **`title`** | `String` | `"eFormX Notification"` | `"eFormX Alert"` | Sets the bold header title displayed on the Android notification card. |
+| **`message`** (or `body`) | `String` | `"You have a new update."` | `"Your form status updated."` | Sets the description text body on the notification card. |
+| **`target_url`** (or `url`) | `String` | *(Empty)* | `"https://apply.eformx.com"` | **Target Webpage:** Tapping the notification card opens this specific webpage link inside the app WebView. |
 | **`image_url`** (or `imageUrl`)| `String` | *(Empty)* | `"https://.../banner.jpg"` | **Banner Image:** Downloads and renders a full expandable Big Picture banner image on the notification card. |
-| **`target_url`** (or `url`) | `String` | `"https://eformx.com"` | `"https://apply.eformx.com/form123"` | **Target Webpage:** Tapping the notification card opens this specific webpage link inside the app. |
-| **`open_type`** | `String` | `"app_webview"` | `"app_webview"` / `"external_browser"` | `"app_webview"` opens URL inside app; `"external_browser"` opens URL in Chrome Custom Tabs. |
-| **`audio_url`** (or `audio`) | `String` | *(Empty)* | `"https://.../audio.mp3"` | **Remote MP3 Audio:** Streams and plays a custom online MP3 audio sound when notification arrives. |
+| **`speak_text`** (or `tts_text`)| `String` | *(Empty)* | `"Hello, your form is submitted."` | **Text-to-Speech Output:** Triggers native Hindi/English voice speech out loud (bypasses default chime tone). |
+| **`audio_url`** (or `audio`) | `String` | *(Empty)* | `"http://.../audio.mp3"` | **Remote MP3 Audio:** Streams and plays a custom online MP3 audio sound instantly on arrival. |
+| **`sound_type`** (or `sound`)| `String` | `"notification"` | `"ringtone"` / `"call"` / `"alarm"` / `"notification"` | `"notification"` = Standard Beep; `"ringtone"` / `"call"` = High Priority Call Alert + Ringtone Loop; `"alarm"` = High Priority Alarm Category. |
+| **`open_type`** | `String` | `"app_webview"` | `"app_webview"` | `"app_webview"` opens target URL inside app WebView. |
 
 ---
 
@@ -512,8 +576,21 @@ To compile and assemble the debug APK:
 ./gradlew assembleDebug
 ```
 
-The compiled APK will be generated at:
+The compiled **Debug APK** will be generated at:
 `app/build/outputs/apk/debug/app-debug.apk`
+
+To compile and assemble the **Production Release APK** (Optimized & Minified):
+
+```bash
+# On Windows PowerShell / Command Prompt
+.\gradlew assembleRelease
+
+# On Linux / macOS
+./gradlew assembleRelease
+```
+
+The compiled **Release APK** will be generated at:
+`app/build/outputs/apk/release/app-release-unsigned.apk`
 
 ---
 

@@ -729,17 +729,9 @@ public class MainActivity extends ComponentActivity {
 
         if (intent.hasExtra("target_url")) {
             String targetUrl = intent.getStringExtra("target_url");
-            String openType = intent.getStringExtra("open_type");
 
             if (targetUrl != null && !targetUrl.isEmpty()) {
-                if ("external_browser".equalsIgnoreCase(openType)) {
-                    try {
-                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl));
-                        startActivity(browserIntent);
-                    } catch (Exception e) {
-                        android.util.Log.e("MainActivity", "Error opening external browser: " + e.getMessage());
-                    }
-                } else if (webView != null) {
+                if (webView != null) {
                     webView.loadUrl(targetUrl);
                 }
                 return;

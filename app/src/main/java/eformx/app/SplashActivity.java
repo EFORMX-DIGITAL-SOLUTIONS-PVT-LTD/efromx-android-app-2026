@@ -31,6 +31,8 @@ public class SplashActivity extends Activity {
     private LinearLayout slidesLayout;
     private LinearLayout dotsLayout;
     private ProgressRingView progressRingView;
+    private android.os.Handler splashHandler;
+    private Runnable splashRunnable;
 
     private final String[][] slideTitles = {
         {"सभी डिजिटल सेवाएँ", "एक ही जगह"},
@@ -53,18 +55,190 @@ public class SplashActivity extends Activity {
         "onboarding_slide3_cafe"
     };
 
+    private FrameLayout splashRootLayout;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
-        boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
+        showBrandingSplashScreen();
 
-        if (hasSeenOnboarding) {
-            launchMainActivity();
-            return;
+        splashHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        splashRunnable = () -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (splashRootLayout != null) {
+                splashRootLayout.animate()
+                        .alpha(0f)
+                        .setDuration(300)
+                        .withEndAction(() -> {
+                            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+                            boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
+                            if (hasSeenOnboarding) {
+                                launchMainActivity();
+                            } else {
+                                setupOnboardingUi();
+                            }
+                        })
+                        .start();
+            } else {
+                SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+                boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
+                if (hasSeenOnboarding) {
+                    launchMainActivity();
+                } else {
+                    setupOnboardingUi();
+                }
+            }
+        };
+        splashHandler.postDelayed(splashRunnable, 2200);
+    }
+
+    private void showBrandingSplashScreen() {
+        int themeColor = Color.parseColor("#F4F8FF");
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+        getWindow().setStatusBarColor(themeColor);
+
+        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (insetsController != null) {
+            insetsController.setAppearanceLightStatusBars(true);
         }
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
 
+        splashRootLayout = new FrameLayout(this);
+        splashRootLayout.setBackgroundColor(Color.parseColor("#F4F8FF"));
+
+        AmbientBackgroundView ambientBgView = new AmbientBackgroundView(this);
+        splashRootLayout.addView(ambientBgView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        ambientBgView.setAlpha(0.6f);
+        ambientBgView.animate()
+                .alpha(1.0f)
+                .setDuration(1200)
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .start();
+
+        BottomWaveView waveView = new BottomWaveView(this);
+        FrameLayout.LayoutParams waveParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(210));
+        waveParams.gravity = Gravity.BOTTOM;
+        splashRootLayout.addView(waveView, waveParams);
+
+        waveView.setTranslationY(dpToPx(60));
+        waveView.animate()
+                .translationY(0f)
+                .setDuration(800)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .start();
+
+        LinearLayout centerLayout = new LinearLayout(this);
+        centerLayout.setOrientation(LinearLayout.VERTICAL);
+        centerLayout.setGravity(Gravity.CENTER);
+
+        FrameLayout logoWrapper = new FrameLayout(this);
+        int logoSize = dpToPx(110);
+        LinearLayout.LayoutParams logoWrapperParams = new LinearLayout.LayoutParams(logoSize, logoSize);
+        logoWrapperParams.gravity = Gravity.CENTER_HORIZONTAL;
+        logoWrapperParams.bottomMargin = dpToPx(20);
+
+        GradientDrawable logoBg = new GradientDrawable();
+        logoBg.setShape(GradientDrawable.OVAL);
+        logoBg.setColor(Color.WHITE);
+        logoWrapper.setBackground(logoBg);
+        logoWrapper.setElevation(dpToPx(3));
+
+        ImageView logoImageView = new ImageView(this);
+        logoImageView.setImageResource(R.mipmap.ic_launcher);
+        int logoPadding = dpToPx(8);
+        logoImageView.setPadding(logoPadding, logoPadding, logoPadding, logoPadding);
+        logoWrapper.addView(logoImageView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        centerLayout.addView(logoWrapper, logoWrapperParams);
+
+        logoWrapper.setAlpha(0f);
+        logoWrapper.setScaleX(0.3f);
+        logoWrapper.setScaleY(0.3f);
+        logoWrapper.animate()
+                .alpha(1.0f)
+                .scaleX(1.0f)
+                .scaleY(1.0f)
+                .setDuration(750)
+                .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f))
+                .start();
+
+        TextView titleTv = new TextView(this);
+        titleTv.setText("eFormX");
+        titleTv.setTextSize(32);
+        titleTv.setTextColor(Color.parseColor("#0F172A"));
+        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
+        titleTv.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        titleParams.bottomMargin = dpToPx(4);
+        centerLayout.addView(titleTv, titleParams);
+
+        titleTv.setAlpha(0f);
+        titleTv.setTranslationY(dpToPx(35));
+        titleTv.animate()
+                .alpha(1.0f)
+                .translationY(0f)
+                .setStartDelay(220)
+                .setDuration(600)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .start();
+
+        TextView taglineTv = new TextView(this);
+        taglineTv.setText("Digital Solutions");
+        taglineTv.setTextSize(14);
+        taglineTv.setTextColor(Color.parseColor("#64748B"));
+        taglineTv.setGravity(Gravity.CENTER);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            taglineTv.setLetterSpacing(0.06f);
+        }
+        LinearLayout.LayoutParams taglineParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        taglineParams.gravity = Gravity.CENTER_HORIZONTAL;
+        centerLayout.addView(taglineTv, taglineParams);
+
+        taglineTv.setAlpha(0f);
+        taglineTv.setTranslationY(dpToPx(25));
+        taglineTv.animate()
+                .alpha(1.0f)
+                .translationY(0f)
+                .setStartDelay(380)
+                .setDuration(600)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .start();
+
+        android.widget.ProgressBar progressBar = new android.widget.ProgressBar(this);
+        progressBar.setIndeterminate(true);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            progressBar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#0052FF")));
+        }
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dpToPx(34), dpToPx(34));
+        progressParams.gravity = Gravity.CENTER_HORIZONTAL;
+        progressParams.topMargin = dpToPx(36);
+        centerLayout.addView(progressBar, progressParams);
+
+        progressBar.setAlpha(0f);
+        progressBar.animate()
+                .alpha(1.0f)
+                .setStartDelay(550)
+                .setDuration(500)
+                .start();
+
+        FrameLayout.LayoutParams centerParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        centerParams.gravity = Gravity.CENTER;
+        splashRootLayout.addView(centerLayout, centerParams);
+
+        setContentView(splashRootLayout);
+    }
+
+    private void setupOnboardingUi() {
         int themeColor = Color.parseColor("#F4F8FF");
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
@@ -252,6 +426,14 @@ public class SplashActivity extends Activity {
                 finishOnboarding.onClick(v);
             }
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (splashHandler != null && splashRunnable != null) {
+            splashHandler.removeCallbacks(splashRunnable);
+        }
+        super.onDestroy();
     }
 
     private View createSlideView(int index) {
