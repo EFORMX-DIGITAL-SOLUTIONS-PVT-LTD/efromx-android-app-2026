@@ -518,17 +518,6 @@ public class MainActivity extends ComponentActivity {
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 applySmartCacheStrategy(url);
                 injectSharePolyfill(view);
-                if (!isNetworkAvailable()) {
-                    view.stopLoading();
-                    showErrorOverlay();
-                    if (fullScreenLoadingOverlay != null) {
-                        fullScreenLoadingOverlay.setVisibility(View.GONE);
-                    }
-
-                    return;
-                } else {
-                    hideErrorOverlay();
-                }
 
                 if (fullScreenLoadingOverlay != null) {
                     if (url != null) {
@@ -581,10 +570,6 @@ public class MainActivity extends ComponentActivity {
             public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
                 if (fullScreenLoadingOverlay != null) {
                     fullScreenLoadingOverlay.setVisibility(View.GONE);
-                }
-
-                if (request != null && request.isForMainFrame()) {
-                    showErrorOverlay();
                 }
                 if (request != null && request.getUrl() != null) {
                     String url = request.getUrl().toString();
@@ -826,25 +811,32 @@ public class MainActivity extends ComponentActivity {
         if (url == null || webView == null) return;
         try {
             Uri uri = Uri.parse(url);
-            String cacheParam = uri.getQueryParameter("cache");
-            if (cacheParam != null) {
+            String versionParam = uri.getQueryParameter("VERSION");
+            if (versionParam == null) {
+                versionParam = uri.getQueryParameter("version");
+            }
+            if (versionParam == null) {
+                versionParam = uri.getQueryParameter("cache");
+            }
+
+            if (versionParam != null) {
                 android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
                 String savedCacheId = prefs.getString("saved_cache_id", null);
 
-                if (savedCacheId != null && savedCacheId.equals(cacheParam)) {
-                    // Same cache ID! Use local disk cache first for instant 0ms load with smooth fallback
-                    webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                if (savedCacheId != null && savedCacheId.equalsIgnoreCase(versionParam)) {
+                    // SAME VERSION! Load 100% Pure Offline from local disk cache with 0ms network overhead
+                    webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
                 } else {
-                    // New/Different cache ID! Fetch fresh page from network and update savedCacheId
+                    // NEW/DIFFERENT VERSION! Fetch fresh page data from network and update saved VERSION
                     if (isNetworkAvailable()) {
                         webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
                     } else {
                         webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
                     }
-                    prefs.edit().putString("saved_cache_id", cacheParam).apply();
+                    prefs.edit().putString("saved_cache_id", versionParam).apply();
                 }
             } else {
-                // Normal page without cache parameter
+                // Normal page without VERSION parameter
                 if (isNetworkAvailable()) {
                     webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
                 } else {
@@ -1045,9 +1037,7 @@ public class MainActivity extends ComponentActivity {
             if (cm != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 networkCallback = new ConnectivityManager.NetworkCallback() {
                     @Override
-                    public void onLost(Network network) {
-                        runOnUiThread(() -> showErrorOverlay());
-                    }
+                    public void onLost(Network network) {}
 
                     @Override
                     public void onAvailable(Network network) {
