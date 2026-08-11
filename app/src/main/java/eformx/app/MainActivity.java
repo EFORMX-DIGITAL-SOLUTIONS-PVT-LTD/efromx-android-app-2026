@@ -407,6 +407,7 @@ public class MainActivity extends ComponentActivity {
         registerNetworkCallback();
 
         WebSettings webSettings = webView.getSettings();
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         webSettings.setJavaScriptEnabled(true);
         webSettings.setGeolocationEnabled(true);
 
@@ -425,11 +426,25 @@ public class MainActivity extends ComponentActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Smart Dynamic Cache Strategy: Check server for fresh version/redirects when online, fallback to disk cache offline
-        if (isNetworkAvailable()) {
+        // Smart Dynamic Cache Strategy: 2-Tier Active & Pending Cache Versioning
+        android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+        String pendingVersion = prefs.getString("cache_ver_pending", null);
+        if (pendingVersion != null && isNetworkAvailable()) {
+            // Apply pending update on next app launch
+            prefs.edit()
+                 .putString("cache_ver_global", pendingVersion)
+                 .remove("cache_ver_pending")
+                 .apply();
             webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         } else {
-            webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            String activeVersion = prefs.getString("cache_ver_global", null);
+            if (activeVersion != null || !isNetworkAvailable()) {
+                // Active cache exists: Instant milliseconds load from disk cache
+                webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            } else {
+                // Fresh install / no cache: Live fetch from network
+                webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            }
         }
 
         // High Render Priority
@@ -625,10 +640,9 @@ public class MainActivity extends ComponentActivity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-
                 if (newProgress >= 100) {
                     if (fullScreenLoadingOverlay != null && fullScreenLoadingOverlay.getVisibility() == View.VISIBLE) {
-                        fullScreenLoadingOverlay.postDelayed(() -> fullScreenLoadingOverlay.setVisibility(View.GONE), 200);
+                        fullScreenLoadingOverlay.setVisibility(View.GONE);
                     }
                 }
                 super.onProgressChanged(view, newProgress);
@@ -732,6 +746,7 @@ public class MainActivity extends ComponentActivity {
 
             if (targetUrl != null && !targetUrl.isEmpty()) {
                 if (webView != null) {
+                    applySmartCacheStrategy(targetUrl);
                     webView.loadUrl(targetUrl);
                 }
                 return;
@@ -741,6 +756,7 @@ public class MainActivity extends ComponentActivity {
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             handleIntentData(intent.getData().toString());
         } else if (webView != null && webView.getUrl() == null) {
+            applySmartCacheStrategy("https://eformx.com/app.php");
             webView.loadUrl("https://eformx.com/app.php");
         }
     }
@@ -763,11 +779,13 @@ public class MainActivity extends ComponentActivity {
                 }
             }
             if (targetUrl != null && !targetUrl.isEmpty()) {
+                applySmartCacheStrategy(targetUrl);
                 webView.loadUrl(targetUrl);
             }
             return;
         }
 
+        applySmartCacheStrategy(rawUrl);
         webView.loadUrl(rawUrl);
     }
 
@@ -836,22 +854,29 @@ public class MainActivity extends ComponentActivity {
                 versionParam = uri.getQueryParameter("ver");
             }
 
-            if (versionParam != null) {
-                android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
-                String cacheKey = "cache_ver_" + (uri.getPath() != null ? uri.getPath() : "main");
-                String savedCacheId = prefs.getString(cacheKey, null);
+            android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+            String activeCacheId = prefs.getString("cache_ver_global", null);
 
-                if (savedCacheId != null && savedCacheId.equalsIgnoreCase(versionParam)) {
-                    // Version matches: Load 100% from local disk cache without live server overhead
+            if (versionParam != null) {
+                if (activeCacheId == null) {
+                    // First time install / no active cache: Live fetch & save active cache ID
+                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                    prefs.edit().putString("cache_ver_global", versionParam).apply();
+                } else if (versionParam.equalsIgnoreCase(activeCacheId)) {
+                    // Active cache version matches: Instant load from disk cache in milliseconds
                     settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
                 } else {
-                    // New or changed version: Fetch fresh live page from network and update saved version
-                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                    prefs.edit().putString(cacheKey, versionParam).apply();
+                    // New/Updated cache ID received: Keep current session on disk cache for instant UI
+                    // Save new version to pending slot so it applies seamlessly on next app launch
+                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                    prefs.edit().putString("cache_ver_pending", versionParam).apply();
                 }
             } else {
-                // Page loaded once: Prefer local disk cache
-                settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                if (activeCacheId != null) {
+                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                } else {
+                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                }
             }
         } catch (Exception e) {
             settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
