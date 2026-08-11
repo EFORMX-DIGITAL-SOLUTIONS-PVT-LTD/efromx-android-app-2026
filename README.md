@@ -24,6 +24,20 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 ### 🛡️ User Protection & Data Safety
 - **Form Data Protection:** Auto-reload is disabled on network reconnect to prevent loss of user-entered HTML form data, input fields, and text entries.
 - **App Exit Confirmation Alert:** Displays an interactive Exit Confirmation Dialog ("Exit App?") on the last back press to prevent accidental app closure.
+- **Android JavaScript Interface Bridge (`AndroidBridge`):** Exposes `Android` object to WebView JavaScript allowing web pages to retrieve device info, device ID, trigger Text-To-Speech output, and request location permissions.
+
+---
+
+## 📱 Android JavaScript Interface (`AndroidBridge`)
+
+The application exposes the `AndroidBridge` JavaScript interface object named `Android` inside WebView:
+
+| Method | Parameters | Return Type | Description | JavaScript Usage Example |
+| :--- | :--- | :--- | :--- | :--- |
+| **`Android.speak(text)`** | `text` (String) | `void` | Speaks the provided text using native Android Text-to-Speech engine | `Android.speak('Hello from eFormX');` |
+| **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
+| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Model, OS, Screen Size, Timezone, etc.) | `let info = JSON.parse(Android.getDeviceInfo());` |
+| **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();` |
 
 ---
 
@@ -271,6 +285,8 @@ app.listen(3000, () => console.log("🚀 Express server running on port 3000"));
 | `android.permission.POST_NOTIFICATIONS` | Allows posting push notifications on Android 13+ (API level 33+). |
 | `android.permission.WAKE_LOCK` | Keeps the processor awake when handling high-priority background notification payloads. |
 | `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Ensures timely delivery of real-time push notifications without battery throttling. |
+| `android.permission.ACCESS_FINE_LOCATION` | Allows WebViews and native features to access precise device GPS location. |
+| `android.permission.ACCESS_COARSE_LOCATION` | Allows access to approximate network-based device location. |
 
 ---
 
@@ -282,6 +298,39 @@ app.listen(3000, () => console.log("🚀 Express server running on port 3000"));
 - **Target SDK:** 35 (Android 15)
 - **Primary Package:** `eformx.app`
 - **Push Notification Service:** Firebase Cloud Messaging (FCM)
+
+---
+
+## 📦 Project Dependencies
+
+### 🖥️ Backend / Notification Server Dependencies (Node.js)
+
+```json
+{
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "firebase-admin": "^14.2.0"
+  }
+}
+```
+
+| Package Name | Version | Purpose & Description |
+| :--- | :--- | :--- |
+| **`cors`** | `^2.8.6` | Enables Cross-Origin Resource Sharing (CORS) for API requests from web applications. |
+| **`express`** | `^5.2.1` | Web application framework for Node.js powering FCM notification dispatch endpoints. |
+| **`firebase-admin`** | `^14.2.0` | Firebase Admin SDK to send high-priority FCM push notifications, topics, and data payloads to Android devices. |
+
+### 📱 Android Application Dependencies (Gradle)
+
+| Dependency | Purpose |
+| :--- | :--- |
+| **`com.google.firebase:firebase-messaging`** | Firebase Cloud Messaging (FCM) push notification engine. |
+| **`androidx.browser:browser:1.8.0`** | Chrome Custom Tabs integration for external link navigation. |
+| **`androidx.core:core-ktx`** | Core Kotlin extensions for Android development. |
+| **`androidx.activity:activity-compose`** | Activity integration for Jetpack Compose. |
+| **`androidx.compose.material3:material3`** | Material Design 3 components. |
+| **`androidx.lifecycle:lifecycle-runtime-ktx`** | Lifecycle-aware coroutine support. |
 
 ---
 

@@ -30,6 +30,13 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.provider.Settings;
+import android.speech.tts.TextToSpeech;
+import android.webkit.GeolocationPermissions;
+import android.webkit.JavascriptInterface;
+import org.json.JSONObject;
+import java.util.Locale;
+import java.util.TimeZone;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
@@ -51,11 +58,14 @@ public class MainActivity extends ComponentActivity {
     private TextView loadingSubtitleTv;
     private ValueCallback<Uri[]> filePathCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
+    private ActivityResultLauncher<String[]> locationPermissionLauncher;
+    private AndroidBridge androidBridge;
     private ConnectivityManager.NetworkCallback networkCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        MyFirebaseMessagingService.stopAllMediaAndTTS(this);
 
         fileChooserLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -78,6 +88,21 @@ public class MainActivity extends ComponentActivity {
                     filePathCallback = null;
                 }
         );
+
+        locationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    Boolean fineGranted = result.getOrDefault(android.Manifest.permission.ACCESS_FINE_LOCATION, false);
+                    Boolean coarseGranted = result.getOrDefault(android.Manifest.permission.ACCESS_COARSE_LOCATION, false);
+                    if (fineGranted || coarseGranted) {
+                        Toast.makeText(MainActivity.this, "Location permission granted", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Location permission denied", Toast.LENGTH_SHORT).show();
+                    }
+                }
+        );
+
+        androidBridge = new AndroidBridge(this, locationPermissionLauncher);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -387,6 +412,14 @@ public class MainActivity extends ComponentActivity {
 
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
+        webSettings.setGeolocationEnabled(true);
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+            }
+        });
         webSettings.setDomStorageEnabled(true);
         webSettings.setDatabaseEnabled(true);
         webSettings.setDatabasePath(getDir("databases", MODE_PRIVATE).getPath());
@@ -417,6 +450,7 @@ public class MainActivity extends ComponentActivity {
         }
 
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidShare");
+        webView.addJavascriptInterface(androidBridge, "Android");
 
         webView.setWebViewClient(new WebViewClient() {
             private void injectSharePolyfill(WebView view) {
@@ -943,6 +977,7 @@ public class MainActivity extends ComponentActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        MyFirebaseMessagingService.stopAllMediaAndTTS(this);
         handleNotificationOrDeepLinkIntent(intent);
     }
 
@@ -1050,6 +1085,9 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
+        if (androidBridge != null) {
+            androidBridge.cleanup();
+        }
         unregisterNetworkCallback();
         super.onDestroy();
     }
@@ -1073,7 +1111,17 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        MyFirebaseMessagingService.stopAllMediaAndTTS(this);
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+            MyFirebaseMessagingService.stopAllMediaAndTTS(this);
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (webView != null && webView.canGoBack()) {
                 webView.goBack();

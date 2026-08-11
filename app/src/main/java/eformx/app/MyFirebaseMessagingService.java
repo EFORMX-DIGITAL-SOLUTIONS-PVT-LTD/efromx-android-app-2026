@@ -21,8 +21,10 @@ import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
 import android.media.MediaPlayer;
+import android.media.Ringtone;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 
@@ -42,6 +44,19 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         super.onMessageReceived(remoteMessage);
         Log.d(TAG, "From: " + remoteMessage.getFrom());
+
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                PowerManager.WakeLock wakeLock = pm.newWakeLock(
+                        PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
+                        "eformx:fcm_call_wakelock"
+                );
+                wakeLock.acquire(15000);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error acquiring WakeLock: " + e.getMessage());
+        }
 
         String title = "Notification";
         String messageBody = "You have a new message.";
@@ -122,7 +137,10 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         if (audioUrl != null && !audioUrl.trim().isEmpty()) {
             playAudioUrl(getApplicationContext(), audioUrl);
-        } else if (speakText != null && !speakText.trim().isEmpty()) {
+        } else {
+            if (speakText == null || speakText.trim().isEmpty()) {
+                speakText = messageBody;
+            }
             speakOutText(getApplicationContext(), speakText);
         }
 
@@ -147,32 +165,32 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
-        String channelId = "eformx_notification_channel_v3";
+        String channelId = "eformx_voice_channel_v2";
         String category = NotificationCompat.CATEGORY_MESSAGE;
         Uri soundUri = null;
 
-        boolean isVoiceNotification = (speakText != null && !speakText.trim().isEmpty()) || "none".equalsIgnoreCase(soundType) || "voice".equalsIgnoreCase(soundType) || "silent".equalsIgnoreCase(soundType);
+        boolean isCallNotification = "ringtone".equalsIgnoreCase(soundType) || "call".equalsIgnoreCase(soundType);
+        boolean isAlarmNotification = "alarm".equalsIgnoreCase(soundType);
 
-        if (isVoiceNotification) {
-            channelId = "eformx_silent_channel_v1";
-            soundUri = null;
-        } else if ("ringtone".equalsIgnoreCase(soundType) || "call".equalsIgnoreCase(soundType)) {
-            channelId = "eformx_call_channel_v3";
+        if (isCallNotification) {
+            channelId = "eformx_call_voice_channel_v1";
             category = NotificationCompat.CATEGORY_CALL;
-            soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-            if (soundUri == null) {
-                soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            }
-        } else if ("alarm".equalsIgnoreCase(soundType)) {
-            channelId = "eformx_alarm_channel_v3";
+            soundUri = null;
+        } else if (isAlarmNotification) {
+            channelId = "eformx_alarm_voice_channel_v1";
             category = NotificationCompat.CATEGORY_ALARM;
-            soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            soundUri = null;
         } else {
-            soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            if (soundUri == null) {
-                soundUri = android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
-            }
+            channelId = "eformx_voice_channel_v2";
+            soundUri = null;
         }
+
+        Intent deleteIntent = new Intent(this, NotificationDismissReceiver.class);
+        deleteIntent.setAction(NotificationDismissReceiver.ACTION_DISMISS);
+        PendingIntent deletePendingIntent = PendingIntent.getBroadcast(
+                this, (int) System.currentTimeMillis() + 1, deleteIntent,
+                PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
 
         Bitmap appLogoBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
 
@@ -188,7 +206,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                         .setCategory(category)
                         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                         .setFullScreenIntent(pendingIntent, true)
-                        .setContentIntent(pendingIntent);
+                        .setContentIntent(pendingIntent)
+                        .setDeleteIntent(deletePendingIntent);
 
         if (soundUri != null) {
             notificationBuilder.setSound(soundUri);
@@ -214,12 +233,12 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             String channelName = "eFormX General Notifications";
             int usage = AudioAttributes.USAGE_NOTIFICATION;
 
-            if ("eformx_call_channel_v3".equals(channelId)) {
-                channelName = "eFormX Incoming Call Ringtone";
-                usage = AudioAttributes.USAGE_NOTIFICATION_RINGTONE;
-            } else if ("eformx_alarm_channel_v3".equals(channelId)) {
-                channelName = "eFormX Alarm Notifications";
-                usage = AudioAttributes.USAGE_ALARM;
+            if ("eformx_call_voice_channel_v1".equals(channelId)) {
+                channelName = "eFormX Incoming Call Voice";
+            } else if ("eformx_alarm_voice_channel_v1".equals(channelId)) {
+                channelName = "eFormX Alarm Voice Notifications";
+            } else {
+                channelName = "eFormX Voice Speech Notifications";
             }
 
             NotificationChannel channel = new NotificationChannel(
@@ -232,17 +251,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             channel.enableLights(true);
             channel.setBypassDnd(true);
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-
-            if ("eformx_silent_channel_v1".equals(channelId)) {
-                channelName = "eFormX Voice Speech Notifications";
-                channel.setSound(null, null);
-            } else {
-                AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(usage)
-                        .build();
-                channel.setSound(soundUri, audioAttributes);
-            }
+            channel.setSound(null, null);
 
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
@@ -260,6 +269,94 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     private static TextToSpeech textToSpeech;
     private static MediaPlayer mediaPlayer;
+    private static MediaPlayer callMediaPlayer;
+    private static boolean isTtsLooping = false;
+    private static String currentSpeakingText = "";
+
+    public static void stopAllMediaAndTTS(Context context) {
+        isTtsLooping = false;
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                if (callMediaPlayer != null) {
+                    if (callMediaPlayer.isPlaying()) callMediaPlayer.stop();
+                    callMediaPlayer.release();
+                    callMediaPlayer = null;
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                if (mediaPlayer != null) {
+                    if (mediaPlayer.isPlaying()) mediaPlayer.stop();
+                    mediaPlayer.release();
+                    mediaPlayer = null;
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                if (textToSpeech != null) {
+                    textToSpeech.stop();
+                    textToSpeech.shutdown();
+                    textToSpeech = null;
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                if (context != null) {
+                    NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                    if (nm != null) {
+                        nm.cancelAll();
+                    }
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private static void playCallRingtone(Context context, Uri ringtoneUri) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                if (callMediaPlayer != null) {
+                    try {
+                        if (callMediaPlayer.isPlaying()) callMediaPlayer.stop();
+                        callMediaPlayer.release();
+                    } catch (Exception ignored) {}
+                    callMediaPlayer = null;
+                }
+
+                Uri uri = ringtoneUri;
+                if (uri == null) {
+                    uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                }
+                if (uri == null) {
+                    uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                }
+
+                callMediaPlayer = new MediaPlayer();
+                callMediaPlayer.setDataSource(context, uri);
+                callMediaPlayer.setAudioAttributes(
+                        new AudioAttributes.Builder()
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                                .build()
+                );
+                callMediaPlayer.setLooping(true);
+                callMediaPlayer.prepare();
+                callMediaPlayer.start();
+
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    try {
+                        if (callMediaPlayer != null) {
+                            if (callMediaPlayer.isPlaying()) callMediaPlayer.stop();
+                            callMediaPlayer.release();
+                            callMediaPlayer = null;
+                        }
+                    } catch (Exception ignored) {}
+                }, 30000);
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error playing continuous call ringtone: " + e.getMessage());
+            }
+        });
+    }
 
     private void playAudioUrl(Context context, String audioUrl) {
         if (audioUrl == null || audioUrl.trim().isEmpty()) return;
@@ -292,28 +389,30 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     private void speakOutText(Context context, String textToSpeak) {
         if (textToSpeak == null || textToSpeak.trim().isEmpty()) return;
+        currentSpeakingText = textToSpeak;
+        isTtsLooping = true;
         new Handler(Looper.getMainLooper()).post(() -> {
             if (textToSpeech == null) {
                 textToSpeech = new TextToSpeech(context.getApplicationContext(), status -> {
                     if (status == TextToSpeech.SUCCESS) {
-                        configureNaturalTtsVoiceAndSpeak(textToSpeak);
+                        configureNaturalTtsVoiceAndSpeak(context, currentSpeakingText);
                     }
                 });
             } else {
-                configureNaturalTtsVoiceAndSpeak(textToSpeak);
+                configureNaturalTtsVoiceAndSpeak(context, currentSpeakingText);
             }
         });
     }
 
-    private void configureNaturalTtsVoiceAndSpeak(String textToSpeak) {
+    private void configureNaturalTtsVoiceAndSpeak(Context context, String textToSpeak) {
         try {
             int result = textToSpeech.setLanguage(new Locale("hi", "IN"));
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 textToSpeech.setLanguage(Locale.US);
             }
 
-            textToSpeech.setPitch(0.95f);      // Soft Natural Pitch
-            textToSpeech.setSpeechRate(0.92f); // Realistic Pace
+            textToSpeech.setPitch(0.95f);
+            textToSpeech.setSpeechRate(0.92f);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 Set<Voice> voices = textToSpeech.getVoices();
@@ -327,7 +426,26 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 }
             }
 
-            textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "FCM_TTS_" + System.currentTimeMillis());
+            textToSpeech.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
+                @Override
+                public void onStart(String utteranceId) {}
+
+                @Override
+                public void onDone(String utteranceId) {
+                    if (isTtsLooping) {
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            if (isTtsLooping && textToSpeech != null) {
+                                textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "FCM_TTS_LOOP_" + System.currentTimeMillis());
+                            }
+                        }, 1000);
+                    }
+                }
+
+                @Override
+                public void onError(String utteranceId) {}
+            });
+
+            textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "FCM_TTS_LOOP_" + System.currentTimeMillis());
         } catch (Exception e) {
             Log.e(TAG, "TTS Speak error: " + e.getMessage());
         }
