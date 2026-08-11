@@ -135,13 +135,14 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             }
         }
 
+        boolean isCallAlert = "ringtone".equalsIgnoreCase(soundType) || "call".equalsIgnoreCase(soundType);
+
         if (audioUrl != null && !audioUrl.trim().isEmpty()) {
             playAudioUrl(getApplicationContext(), audioUrl);
         } else {
-            if (speakText == null || speakText.trim().isEmpty()) {
-                speakText = messageBody;
+            if (speakText != null && !speakText.trim().isEmpty()) {
+                speakOutText(getApplicationContext(), speakText, isCallAlert);
             }
-            speakOutText(getApplicationContext(), speakText);
         }
 
         sendNotification(title, messageBody, targetUrl, openType, imageUrl, soundType, speakText);
@@ -393,10 +394,10 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         });
     }
 
-    private void speakOutText(Context context, String textToSpeak) {
+    private void speakOutText(Context context, String textToSpeak, boolean loop) {
         if (textToSpeak == null || textToSpeak.trim().isEmpty()) return;
         currentSpeakingText = textToSpeak;
-        isTtsLooping = true;
+        isTtsLooping = loop;
         new Handler(Looper.getMainLooper()).post(() -> {
             if (textToSpeech == null) {
                 textToSpeech = new TextToSpeech(context.getApplicationContext(), status -> {

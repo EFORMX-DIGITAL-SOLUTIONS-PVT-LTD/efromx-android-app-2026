@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "eformx.app"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 3
         versionName = "1.4"
 

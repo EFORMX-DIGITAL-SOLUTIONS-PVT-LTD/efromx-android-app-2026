@@ -324,8 +324,8 @@ curl -X POST http://localhost:3000/api/send-notification \
 | **`topic`** | `String` | `"all"` | `"all"` | **Mass Unlimited Broadcast:** When `token` is omitted, broadcasts notification simultaneously to ALL registered users (Unlimited: 1 Lakh+ / 100,000+ devices via topic `"all"`). |
 | **`title`** | `String` | `"eFormX Notification"` | `"📞 Incoming Call Request"` | Sets the bold header title displayed on the Android notification card. |
 | **`message`** (or `body`) | `String` | `"You have a new update."` | `"Namaste, Admin is calling..."` | Sets the description text body on the notification card. |
-| **`speak_text`** (or `tts_text`)| `String` | *(Message Body)* | `"Namaste Ramesh, Admin call kar rahe hain."` | **Continuous Speech Loop:** Triggers native Text-to-Speech to continuously speak this text until swiped, opened, or volume muted! |
-| **`sound_type`** (or `sound`)| `String` | `"notification"` | `"ringtone"` / `"call"` / `"notification"` / `"silent"` | Sets notification channel behavior. `"ringtone"` or `"call"` enables High-Priority Call Mode. |
+| **`speak_text`** (or `tts_text`)| `String` | *(Message Body)* | `"Namaste Ramesh, Admin call kar rahe hain."` | **Text-to-Speech Output:** Triggers native Hindi/English voice speech. Speaks **1 TIME ONLY** for `"sound_type": "notification"`, and **LOOPS CONTINUOUSLY** for `"sound_type": "ringtone"` / `"call"`. |
+| **`sound_type`** (or `sound`)| `String` | `"notification"` | `"ringtone"` / `"call"` / `"notification"` / `"silent"` | `"notification"` = Standard Beep + Speaks Voice **1 Time Only**; `"ringtone"` / `"call"` = High Priority Call Alert + **Repeating Continuous Voice Speech Loop**. |
 | **`image_url`** (or `imageUrl`)| `String` | *(Empty)* | `"https://.../banner.jpg"` | **Banner Image:** Downloads and renders a full expandable Big Picture banner image on the notification card. |
 | **`target_url`** (or `url`) | `String` | `"https://eformx.com"` | `"https://apply.eformx.com/form123"` | **Target Webpage:** Tapping the notification card opens this specific webpage link inside the app. |
 | **`open_type`** | `String` | `"app_webview"` | `"app_webview"` / `"external_browser"` | `"app_webview"` opens URL inside app; `"external_browser"` opens URL in Chrome Custom Tabs. |
@@ -363,7 +363,8 @@ curl -X POST http://localhost:3000/api/send-notification \
 - **Language:** Java 17 / Kotlin
 - **Build System:** Gradle 8.13 with AGP 8.9.0
 - **Min SDK:** 24 (Android 7.0)
-- **Target SDK:** 35 (Android 15)
+- **Compile SDK:** 37 (Android Latest)
+- **Target SDK:** 37 (Android Latest)
 - **Primary Package:** `eformx.app`
 - **Push Notification Service:** Firebase Cloud Messaging (FCM)
 
