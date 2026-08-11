@@ -1,278 +1,152 @@
 # eFormX Android Application
 
-An ultra-fast, professional, hardware-accelerated Android WebView application for **eFormX Digital Services**. Built with native Java, modern AndroidX components, custom deep linking, Firebase Cloud Messaging (FCM) integration, offline handling, and smooth onboarding workflows.
+An ultra-fast, professional, hardware-accelerated Android WebView application for **eFormX Digital Services**. Built with native Java, modern AndroidX components, custom deep linking, Firebase Cloud Messaging (FCM) integration, hardware-accelerated rendering, offline handling, native JavaScript bridges, and smart background audio execution.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Features & How They Work
 
-### 🚀 Performance & Rendering
+### 🚀 Performance & Rendering Engine
 - **GPU Hardware Layer Acceleration:** Uses `View.LAYER_TYPE_HARDWARE` on WebView for 60fps smooth scrolling and instant page rendering.
 - **Smart Memory Caching:** `WebSettings.LOAD_DEFAULT` optimized with DOM Storage, Web Database, and Cookie Persistence for high-speed dynamic loading.
+- **HTML5 Geolocation Support:** Hardware-accelerated geolocation enabled with custom `WebChromeClient` callback (`onGeolocationPermissionsShowPrompt`) for seamless `navigator.geolocation.getCurrentPosition(...)` calls.
 
-### 🔔 Push Notifications & Messaging (Firebase Cloud Messaging)
-- **FCM Service (`MyFirebaseMessagingService`):** Background & foreground push notification engine supporting custom titles, messages, big picture images, and custom action links.
-- **Rich Media & Deep Link Handling:** Automatic image downloading for notifications and click-through navigation directly into target WebViews or external schemes.
-- **Text-to-Speech (TTS) & Custom Alerts:** Optional audio playback and Text-to-Speech announcements for critical incoming alerts.
-- **Notification Channel:** Custom notification channel (`eformx_notification_channel`) with high priority, custom sound, and vibration support.
+---
+
+### 📱 Android JavaScript Interface (`AndroidBridge`)
+Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GPS coordinates, device info, device ID, app version, package name, network status, trigger Text-To-Speech output, and request location permissions:
+
+| Method | Parameters | Return Type | Description | JavaScript Usage Example |
+| :--- | :--- | :--- | :--- | :--- |
+| **`Android.getLocation()`** | None | `String` (JSON) | Returns GPS Latitude, Longitude, Accuracy, Altitude, Speed, Time JSON | `let loc = JSON.parse(Android.getLocation());` |
+| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Brand, Model, Device, Product, OS Version, SDK Level, Language, Country, TimeZone, Screen Dimensions, App Version, Package Name) | `let info = JSON.parse(Android.getDeviceInfo());` |
+| **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();` |
+| **`Android.getAppVersion()`** | None | `String` | Returns App Version Name (e.g. `"1.0"`) | `let ver = Android.getAppVersion();` |
+| **`Android.getPackageName()`** | None | `String` | Returns Package Identifier (`"eformx.app"`) | `let pkg = Android.getPackageName();` |
+| **`Android.isNetworkAvailable()`** | None | `boolean` | Returns active internet connection state (`true`/`false`) | `let online = Android.isNetworkAvailable();` |
+| **`Android.speak(text)`** | `text` (String) | `void` | Speaks text using native Android Text-to-Speech engine | `Android.speak('Hello from eFormX');` |
+| **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
+
+---
+
+### 💻 Frontend JavaScript Integration Guide
+
+Web developers can integrate with the eFormX Android App using the following JavaScript snippets:
+
+#### 1. Fetching GPS Latitude & Longitude Coordinates
+```javascript
+if (window.Android && window.Android.getLocation) {
+    let locationResult = JSON.parse(window.Android.getLocation());
+    if (!locationResult.error) {
+        console.log("Latitude:", locationResult.latitude);
+        console.log("Longitude:", locationResult.longitude);
+        console.log("Accuracy:", locationResult.accuracy + " meters");
+    } else {
+        console.warn("Location error:", locationResult.message);
+        window.Android.openLocationPermission();
+    }
+}
+```
+
+#### 2. Fetching Complete Device Specifications
+```javascript
+if (window.Android && window.Android.getDeviceInfo) {
+    let deviceInfo = JSON.parse(window.Android.getDeviceInfo());
+    console.log("Device Info:", deviceInfo);
+}
+```
+
+#### 3. Standard HTML5 Geolocation Fallback
+```javascript
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        function (pos) {
+            console.log("HTML5 Lat:", pos.coords.latitude, "Lng:", pos.coords.longitude);
+        },
+        function (err) {
+            console.error("HTML5 Error:", err.message);
+        }
+    );
+}
+```
+
+---
+
+### 🔔 Push Notifications & FCM Engine (`MyFirebaseMessagingService`)
+- **FCM Data-Only High Priority Delivery:** Background & foreground push notification engine supporting custom titles, messages, big picture images, and custom target URLs.
+- **Continuous Speech Announcements:** Text-to-Speech (TTS) engine (`speakOutText`) continuously loops speech announcements during call notifications.
+- **OPPO / ColorOS Background Execution:** Wakes up CPU and Screen from deep sleep using `PowerManager.WakeLock` (`FULL_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP`) for guaranteed background delivery when the app is closed or killed.
+- **Branded Notification Cards:** Displays the official eFormX App Logo (`ic_launcher`) clearly on notification cards.
+
+---
+
+### 🔇 3-Way Smart Notification Audio Stop Engine
+The application provides three immediate methods to stop background audio and repeating TTS speech:
+1. **Swipe-to-Dismiss Stop (`NotificationDismissReceiver`):** Swiping away or removing the notification card immediately triggers `setDeleteIntent` to stop speech and cancel active notifications (`stopAllMediaAndTTS()`).
+2. **App Open Auto-Stop:** Opening the eFormX application (via notification tap, home icon, or deep link) instantly clears background speech and audio playback in `MainActivity` lifecycle methods (`onCreate`, `onStart`, `onResume`, `onNewIntent`).
+3. **Hardware Volume Button Mute (`VolumeButtonReceiver` & `onKeyDown`):** Pressing hardware Volume Down, Volume Up, or Mute buttons anywhere on the phone triggers `android.media.VOLUME_CHANGED_ACTION` to instantly silence background speech and notification audio.
+
+---
+
+### 📡 Master FCM Notification API Reference (`POST /api/send-notification`)
+
+Use a single unified API endpoint (`http://localhost:3000/api/send-notification`) to dispatch notifications. Customize payload behavior by adding or changing key parameters in the Master JSON Schema.
+
+#### 1️⃣ Master Unified JSON Schema
+
+```json
+{
+  "token": "OPTIONAL_SPECIFIC_USER_FCM_TOKEN",
+  "topic": "all",
+  "title": "Notification Title",
+  "message": "Message text description",
+  "speak_text": "Text to speak out loud continuously",
+  "sound_type": "ringtone",
+  "image_url": "https://apply.eformx.com/banner.jpg",
+  "target_url": "https://apply.eformx.com/status.php?id=123",
+  "open_type": "app_webview",
+  "audio_url": "https://apply.eformx.com/chime.mp3"
+}
+```
+
+```bash
+curl -X POST http://localhost:3000/api/send-notification \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "📞 eFormX Call Alert",
+    "message": "Namaste, EFORMX call notification.",
+    "speak_text": "Namaste, EFORMX call notification.",
+    "sound_type": "ringtone"
+  }'
+```
+
+---
+
+#### 2️⃣ JSON Field Parameter Effect Table
+
+| JSON Key / Parameter | Type | Default Value | Value Options / Example | Effect & App Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| **`token`** | `String` | *(Empty)* | `"eX8kL1mN...xyz"` | **Single User Target:** When provided, notification is sent ONLY to this 1 specific user device. |
+| **`topic`** | `String` | `"all"` | `"all"` | **Mass Broadcast:** When `token` is omitted, broadcasts notification to ALL 500+ registered users. |
+| **`title`** | `String` | `"eFormX Notification"` | `"📞 Incoming Call Request"` | Sets the bold header title displayed on the Android notification card. |
+| **`message`** (or `body`) | `String` | `"You have a new update."` | `"Namaste, Admin is calling..."` | Sets the description text body on the notification card. |
+| **`speak_text`** (or `tts_text`)| `String` | *(Message Body)* | `"Namaste Ramesh, Admin call kar rahe hain."` | **Continuous Speech Loop:** Triggers native Text-to-Speech to continuously speak this text until swiped, opened, or volume muted! |
+| **`sound_type`** (or `sound`)| `String` | `"notification"` | `"ringtone"` / `"call"` / `"notification"` / `"silent"` | Sets notification channel behavior. `"ringtone"` or `"call"` enables High-Priority Call Mode. |
+| **`image_url`** (or `imageUrl`)| `String` | *(Empty)* | `"https://.../banner.jpg"` | **Banner Image:** Downloads and renders a full expandable Big Picture banner image on the notification card. |
+| **`target_url`** (or `url`) | `String` | `"https://eformx.com"` | `"https://apply.eformx.com/form123"` | **Target Webpage:** Tapping the notification card opens this specific webpage link inside the app. |
+| **`open_type`** | `String` | `"app_webview"` | `"app_webview"` / `"external_browser"` | `"app_webview"` opens URL inside app; `"external_browser"` opens URL in Chrome Custom Tabs. |
+| **`audio_url`** (or `audio`) | `String` | *(Empty)* | `"https://.../audio.mp3"` | **Remote MP3 Audio:** Streams and plays a custom online MP3 audio sound when notification arrives. |
+
+---
 
 ### 🎨 Modern UI & UX
 - **Onboarding Carousel (`SplashActivity`):** Interactive onboarding experience with auto-advancing slides, modern indicator dots, and sleek action buttons.
-- **Minimal Branded Loading Screen:** Dynamic full-page loading overlay matching custom branding with real-time status titles ("Loading Application Form...", "Loading Dashboard...", "Opening Login Portal..."). Locked on screen until 100% web page load completion.
+- **Minimal Branded Loading Screen:** Dynamic full-page loading overlay matching custom branding with real-time status titles.
 - **Pixel-Perfect Offline Error Screen:** Custom Canvas-drawn Wi-Fi slash icon badge, "Try Again" reload action, "Check Connection" system settings shortcut, and "Contact Support" WhatsApp integration.
 
 ### 🛡️ User Protection & Data Safety
 - **Form Data Protection:** Auto-reload is disabled on network reconnect to prevent loss of user-entered HTML form data, input fields, and text entries.
 - **App Exit Confirmation Alert:** Displays an interactive Exit Confirmation Dialog ("Exit App?") on the last back press to prevent accidental app closure.
-- **Android JavaScript Interface Bridge (`AndroidBridge`):** Exposes `Android` object to WebView JavaScript allowing web pages to retrieve device info, device ID, trigger Text-To-Speech output, and request location permissions.
-
----
-
-## 📱 Android JavaScript Interface (`AndroidBridge`)
-
-The application exposes the `AndroidBridge` JavaScript interface object named `Android` inside WebView:
-
-| Method | Parameters | Return Type | Description | JavaScript Usage Example |
-| :--- | :--- | :--- | :--- | :--- |
-| **`Android.speak(text)`** | `text` (String) | `void` | Speaks the provided text using native Android Text-to-Speech engine | `Android.speak('Hello from eFormX');` |
-| **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
-| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Model, OS, Screen Size, Timezone, etc.) | `let info = JSON.parse(Android.getDeviceInfo());` |
-| **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();` |
-
----
-
-## 🔗 Deep Links, Query Parameters & Callback Reference
-
-The application features advanced URL parsing and intent handling to intercept special schemes and parameters sent from web portals:
-
-| Query Parameter / Scheme | Practical Usage Example | Behavior & Description |
-| :--- | :--- | :--- |
-| **`browser=external`** | `https://apply.eformx.com/portal.php?browser=external` | Intercepted in `isExternalBrowserRequested()`. Opens the requested URL outside the WebView using Chrome Custom Tabs or the device's default web browser. *(Supports legacy typo `browser=extrunal`)* |
-| **`cache=ID`** | `https://eformx.com?cache=1` | Smart Cache-ID Interceptor. Intercepted in `applySmartCacheStrategy()`. Compares incoming `cache` ID parameter against saved disk ID. If matching, forces `WebSettings.LOAD_CACHE_ONLY` for 100% network-independent instant 0ms local disk cache loading. |
-| **`share_link=true`** | `https://apply.eformx.com/form.php?share_link=true` | Intercepted URL parameter. Automatically triggers native Android Share Intent sheet allowing users to share the current URL across installed apps. |
-| **`callback=app`** | `https://apply.eformx.com/success.php?callback=app` | App return callback query parameter. Signals completion of external actions and returns the user to the app's clean WebView state. *(Also handles `calback=app`)* |
-| **`eformx://`** | `eformx://apply/form123` | Custom deep link scheme. Automatically parsed by `parseEformxUrl()` to construct the target HTTPS URL (`https://apply.eformx.com/apply/form123`) and loaded seamlessly inside the app. |
-| **`eformx:/?callback=app`** | `eformx:/?callback=app` | Short callback URL interceptor handled in `isShortCallbackUrl()`. Returns a 200 OK empty HTML response to prevent error screens and returns user cleanly back to app. |
-| **`wa.me` / `whatsapp://`** | `https://wa.me/919876543210?text=Hello` | Auto-converted by `convertToWhatsappScheme()` into native `whatsapp://send?phone=919876543210&text=Hello` schemes to launch WhatsApp directly. |
-| **Non-HTTP Schemes** | `tel:+919876543210`<br>`mailto:support@eformx.com`<br>`sms:+919876543210` | Intercepted in `handleNonHttpScheme()`. Launches external system apps via Android Intents (e.g. Phone Dialer, Mail Client, SMS, Payment Apps like UPI). |
-
----
-
-## 🔔 Push Notification Types & FCM Payload Specifications
-
-The application supports multiple dynamic notification types, custom sound modes, rich media, and TTS handled by `MyFirebaseMessagingService`:
-
-### 📢 Supported Notification Types
-
-1. **Standard System Notification (`sound_type: "notification"` / default)**
-   - Displays a high-priority system notification with default chime sound and vibration on channel `eformx_notification_channel_v3`.
-2. **Ringtone / Call Alert Notification (`sound_type: "ringtone"` / `"call"`)**
-   - Continuously loops system ringtone (`RingtoneManager.TYPE_RINGTONE`) with `FLAG_INSISTENT` on channel `eformx_call_channel_v3` for urgent incoming alerts or call events.
-3. **Alarm Alert Notification (`sound_type: "alarm"`)**
-   - Plays alarm sound (`RingtoneManager.TYPE_ALARM`) on channel `eformx_alarm_channel_v3`.
-4. **Voice Speech / Text-To-Speech Notification (`speak_text: "..."` or `sound_type: "voice"` / `"silent"`)**
-   - Mutes default sound on channel `eformx_silent_channel_v1` and speaks the alert text out loud in natural voice using Android's native Text-to-Speech (TTS) engine (supporting Hindi/English).
-5. **Custom Remote MP3 Audio Alert (`audio_url: "https://..."`)**
-   - Downloads and streams a custom remote MP3 file via `MediaPlayer` immediately upon notification arrival.
-6. **Rich Media Image Notification (`imageUrl: "https://..."`)**
-   - Asynchronously downloads dynamic image URL and renders an expanded `BigPictureStyle` banner notification.
-
----
-
-### 📋 FCM Data Payload Schema & Parameters Reference
-
-| Data Payload Key | Alternative Payload Keys | Purpose & Description | Practical Usage Example |
-| :--- | :--- | :--- | :--- |
-| **`title`** | - | Title text of the notification card | `"Form Approved"` |
-| **`message`** | `body` | Main notification body text | `"Your eForm #8492 has been processed."` |
-| **`imageUrl`** | `image`, `image_url` | Direct URL for BigPictureStyle expanded image | `"https://eformx.com/img/banner.jpg"` |
-| **`target_url`** | `url`, `link` | Target Web URL or deep link to open on click | `"https://apply.eformx.com/status.php"` |
-| **`open_type`** | - | Target window (`app_webview` or `external`) | `"app_webview"` |
-| **`sound_type`** | `sound` | Alert tone mode (`notification`, `call`, `ringtone`, `alarm`, `silent`, `voice`) | `"call"` |
-| **`speak_text`** | `tts_text`, `tts=true` | Reads out text via native Text-To-Speech (TTS) | `"Aapka application status update ho gaya hai."` |
-| **`audio_url`** | `audio`, `mp3_url` | Direct URL to remote MP3 file played on receipt | `"https://eformx.com/audio/alert.mp3"` |
-
----
-
-### 🎯 Notification Targeting Modes (Recipient Types)
-
-| Targeting Mode | Payload `"to"` Value | Description & Use Case |
-| :--- | :--- | :--- |
-| **All App Users (Mass Broadcast)** | `"to": "/topics/all"` | Sends notification simultaneously to every installed eFormX app instance subscribed to global topic. |
-| **Specific Topic Group** | `"to": "/topics/<topic_name>"` | Sends notification to a subset of users subscribed to a custom topic (e.g. `/topics/news`, `/topics/alerts`). |
-| **Single Specific User Device** | `"to": "<FCM_DEVICE_TOKEN>"` | Targets a single specific user device using their unique FCM Registration Token. |
-
----
-
-### 💻 Sample FCM Push Notification JSON Payloads
-
-#### 1. Broadcast Notification Payload (Send to ALL Users)
-
-```json
-{
-  "to": "/topics/all",
-  "data": {
-    "title": "Important Service Announcement",
-    "message": "New eForm portals are now live! Tap to view details.",
-    "imageUrl": "https://eformx.com/assets/broadcast_banner.png",
-    "target_url": "https://apply.eformx.com/announcement.php",
-    "open_type": "app_webview",
-    "sound_type": "notification",
-    "speak_text": "Important announcement update for all eFormX users."
-  }
-}
-```
-
-#### 2. Single User Notification Payload (Send to Specific Token)
-
-```json
-{
-  "to": "fcm_device_registration_token_here",
-  "data": {
-    "title": "Application Status Update",
-    "message": "Your eForm #1092 has been successfully verified.",
-    "imageUrl": "https://eformx.com/assets/notification_banner.png",
-    "target_url": "https://apply.eformx.com/dashboard.php?id=1092",
-    "open_type": "app_webview",
-    "sound_type": "call",
-    "speak_text": "Aapka form verify ho gaya hai."
-  }
-}
-```
-
----
-
-### 🖥️ Firebase Admin Node.js / Express Server Integration Example
-
-Complete backend server implementation using Node.js, Express, and `firebase-admin` to send push notifications, ringtone call alerts, and mass broadcasts:
-
-```javascript
-const express = require("express");
-const { initializeApp, cert } = require("firebase-admin/app");
-const { getMessaging } = require("firebase-admin/messaging");
-const cors = require("cors");
-const serviceAccount = require("./serviceAccountKey.json");
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Initialize Firebase Admin
-initializeApp({
-  credential: cert(serviceAccount),
-});
-
-// Helper function to build High-Priority Data-Only FCM Message
-function buildFcmMessage(reqBody) {
-  const {
-    token,
-    topic,
-    title,
-    message,
-    body,
-    image_url,
-    imageUrl,
-    image,
-    audio_url,
-    audio,
-    mp3_url,
-    target_url,
-    url,
-    open_type,
-    sound_type,
-    sound,
-    speak_text,
-    tts_text
-  } = reqBody;
-
-  const finalTitle = title || "eFormX Notification";
-  const finalBody = message || body || "You have a new update.";
-  const finalImg = image_url || imageUrl || image || "";
-  const finalAudioUrl = audio_url || audio || mp3_url || "";
-  const finalTargetUrl = target_url || url || "https://eformx.com/app.php";
-  const finalOpenType = open_type || "app_webview";
-  const finalSoundType = sound_type || sound || "notification";
-  const finalSpeakText = speak_text || tts_text || finalBody;
-
-  // Use valid token if provided, else default to broadcast topic "all"
-  const targetObj = (token && token !== "YOUR_FCM_TOKEN" && token.length > 20) 
-    ? { token } 
-    : { topic: topic || "all" };
-
-  return {
-    ...targetObj,
-    android: {
-      priority: "high",
-      ttl: 0
-    },
-    data: {
-      title: String(finalTitle),
-      body: String(finalBody),
-      message: String(finalBody),
-      target_url: String(finalTargetUrl),
-      open_type: String(finalOpenType),
-      sound_type: String(finalSoundType),
-      speak_text: String(finalSpeakText),
-      audio_url: String(finalAudioUrl),
-      image_url: String(finalImg),
-      imageUrl: String(finalImg),
-      timestamp: String(Date.now()),
-    },
-  };
-}
-
-// 1. General Notification API
-app.post("/api/send-notification", async (req, res) => {
-  try {
-    const payload = buildFcmMessage(req.body);
-    const responseId = await getMessaging().send(payload);
-    console.log("✅ Notification sent successfully! ID:", responseId);
-    return res.status(200).json({ success: true, messageId: responseId });
-  } catch (error) {
-    console.error("❌ Error sending notification:", error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 2. Incoming Call Ringtone Notification API
-app.post("/api/send-call", async (req, res) => {
-  try {
-    const body = {
-      ...req.body,
-      title: req.body.title || "📞 Incoming Call Request",
-      message: req.body.message || req.body.body || "eFormX Admin is calling...",
-      sound_type: "ringtone",
-      speak_text: req.body.speak_text || "Incoming call request from admin"
-    };
-    const payload = buildFcmMessage(body);
-    const responseId = await getMessaging().send(payload);
-    console.log("✅ Call Notification sent successfully! ID:", responseId);
-    return res.status(200).json({ success: true, messageId: responseId });
-  } catch (error) {
-    console.error("❌ Error sending call notification:", error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 3. Broadcast Topic Notification API
-app.post("/api/send-all", async (req, res) => {
-  try {
-    const body = {
-      ...req.body,
-      topic: req.body.topic || "all"
-    };
-    const payload = buildFcmMessage(body);
-    const responseId = await getMessaging().send(payload);
-    console.log("✅ Broadcast Notification sent successfully! ID:", responseId);
-    return res.status(200).json({ success: true, messageId: responseId });
-  } catch (error) {
-    console.error("❌ Error sending broadcast notification:", error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.listen(3000, () => console.log("🚀 Express server running on port 3000"));
-```
 
 ---
 
@@ -281,9 +155,9 @@ app.listen(3000, () => console.log("🚀 Express server running on port 3000"));
 | Permission | Purpose |
 | :--- | :--- |
 | `android.permission.INTERNET` | Required for loading web pages and connecting to online services. |
-| `android.permission.ACCESS_NETWORK_STATE` | Monitors device connection status for offline handling and connectivity state updates. |
+| `android.permission.ACCESS_NETWORK_STATE` | Monitors device connection status for offline handling and connectivity updates. |
 | `android.permission.POST_NOTIFICATIONS` | Allows posting push notifications on Android 13+ (API level 33+). |
-| `android.permission.WAKE_LOCK` | Keeps the processor awake when handling high-priority background notification payloads. |
+| `android.permission.WAKE_LOCK` | Keeps CPU awake when handling high-priority background notifications and call alerts. |
 | `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Ensures timely delivery of real-time push notifications without battery throttling. |
 | `android.permission.ACCESS_FINE_LOCATION` | Allows WebViews and native features to access precise device GPS location. |
 | `android.permission.ACCESS_COARSE_LOCATION` | Allows access to approximate network-based device location. |
@@ -339,15 +213,17 @@ app.listen(3000, () => console.log("🚀 Express server running on port 3000"));
 ```
 app/src/main/
 ├── java/eformx/app/
-│   ├── MainActivity.java                 # Main Web View, Network Callback, Offline Screen & Exit Dialog
+│   ├── MainActivity.java                 # Main Web View, Network Callback, Offline Screen, Exit Dialog & Volume Key Handler
 │   ├── SplashActivity.java               # Branded Onboarding Carousel & Splash Screen
-│   ├── MyFirebaseMessagingService.java   # Firebase Cloud Messaging Service & Push Notifications
-│   └── WebAppInterface.java              # Android Share Javascript Interface
+│   ├── AndroidBridge.java                # Standalone JavaScript Interface Bridge (Location, Device Info, Device ID, App Version, Package Name, TTS)
+│   ├── MyFirebaseMessagingService.java   # FCM Push Service, WakeLock, Looping TTS Speech & Audio Cleanup
+│   ├── NotificationDismissReceiver.java  # BroadcastReceiver handling notification swipe-to-dismiss audio/TTS cleanup
+│   └── VolumeButtonReceiver.java         # BroadcastReceiver muting notification speech/audio on hardware volume key press
 ├── res/
 │   ├── drawable/                         # Custom shapes, gradients, and icons
 │   ├── layout/                           # XML layouts
 │   └── values/                           # Colors, strings, themes
-└── AndroidManifest.xml                   # Deep links, permissions, & activity/service declarations
+└── AndroidManifest.xml                   # Intent filters, permissions, activities, services & receivers
 ```
 
 ---
@@ -371,14 +247,5 @@ The compiled APK will be generated at:
 
 ## ⚙️ Configuration & Default Launch URL
 
-- **Default Launch URL:** `https://eformx.com/app.php`
-- **Deep Link Intent Filter Hosts:** `apply.eformx.com`, `eformx.com`
-- **Custom Deep Link Scheme:** `eformx://`
-- **FCM Channel ID:** `eformx_notification_channel`
-
----
-
-## 📄 License
-
-Copyright © 2026 eFormX. All rights reserved.
-
+The default web portal URL is loaded in `MainActivity.java`:
+- **Default URL:** `https://apply.eformx.com`
