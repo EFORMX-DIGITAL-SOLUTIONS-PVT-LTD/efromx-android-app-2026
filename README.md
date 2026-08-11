@@ -342,6 +342,47 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
 
 ---
 
+### 🔗 Deep Links, `eformx://` Scheme & URL Query Parameters Reference
+
+The eFormX native Android client includes built-in deep-link handling and dynamic URL query parameter routing in `MainActivity`.
+
+#### 1️⃣ Custom `eformx://` Scheme & App Links
+
+The app registers intent filters for both custom scheme (`eformx://`) and verified web domains (`https://apply.eformx.com` & `https://eformx.com`):
+
+- **Custom Scheme URI Example:** `eformx://apply.eformx.com/form123`
+- **Parsing Behavior:** `parseEformxUrl(rawUrl)` converts `eformx://` URIs to standard `https://` URLs and loads them directly inside the app WebView (`webView.loadUrl(targetUrl)`).
+- **Duplicate Prevention:** Normalizes trailing slashes and checks current WebView URL to prevent redundant page reloads if the user is already on the target page.
+
+```bash
+# Test custom scheme deep-link via ADB CLI
+adb shell am start -W -a android.intent.action.VIEW -d "eformx://apply.eformx.com/form123" eformx.app
+```
+
+---
+
+#### 2️⃣ Dynamic URL Query Parameters (`isExternalBrowserRequested`)
+
+Control browser navigation dynamically using query parameters attached to any URL:
+
+| Standard Query Parameter | Supported Aliases / Variants | Behavior & App Action |
+| :--- | :--- | :--- |
+| **`browser=external`** | `browser=external` (also supports `browser=extrunal`) | **Forces External Browser:** Intercepts page load and opens the target URL in Chrome / Phone Default Browser (`Intent.ACTION_VIEW`). |
+| **`callback=app`** | `callback=app` (also supports `calback=app`) | **Forces App WebView:** Overrides `browser=external` and keeps navigation inside the native App WebView. Ideal for payment callbacks and redirect URLs. |
+| **`share_link=true`** | `share_link=true` | **Web Share Override:** Overrides external browser redirection to process Web Share sheets (`navigator.share`) directly inside app. |
+
+##### Example Usage:
+
+```html
+<!-- Open link in external Chrome browser -->
+<a href="https://external-site.com/docs?browser=external">Open in Chrome</a>
+
+<!-- Payment gateway callback returning back to app WebView -->
+<a href="https://apply.eformx.com/success.php?callback=app">Return to App</a>
+```
+
+---
+
 ### 🔔 Push Notifications & FCM Engine (`MyFirebaseMessagingService`)
 - **FCM Data-Only High Priority Delivery:** Background & foreground push notification engine supporting custom titles, messages, big picture images, and custom target URLs.
 - **Continuous Speech Announcements:** Text-to-Speech (TTS) engine (`speakOutText`) continuously loops speech announcements during call notifications.
