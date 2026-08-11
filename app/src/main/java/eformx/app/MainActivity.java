@@ -425,9 +425,9 @@ public class MainActivity extends ComponentActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Smart Cache-First Strategy: Load from local disk cache once loaded, live fetch on version change
+        // Smart Dynamic Cache Strategy: Check server for fresh version/redirects when online, fallback to disk cache offline
         if (isNetworkAvailable()) {
-            webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         } else {
             webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
         }
