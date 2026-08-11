@@ -61,6 +61,7 @@ public class MainActivity extends ComponentActivity {
     private ActivityResultLauncher<String[]> locationPermissionLauncher;
     private AndroidBridge androidBridge;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private boolean isErrorState = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -424,11 +425,11 @@ public class MainActivity extends ComponentActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Aggressive Caching Strategy: Use local disk cache first for instant 0ms loads
+        // Smart Cache-First Strategy: Load from local disk cache once loaded, live fetch on version change
         if (isNetworkAvailable()) {
             webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
         } else {
-            webSettings.setCacheMode(WebSettings.LOAD_CACHE_ONLY);
+            webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
         }
 
         // High Render Priority
@@ -562,7 +563,9 @@ public class MainActivity extends ComponentActivity {
                         fullScreenLoadingOverlay.setVisibility(View.GONE);
                     }
                 }
-
+                if (url != null && !url.startsWith("data:")) {
+                    isErrorState = false;
+                }
                 super.onPageFinished(view, url);
             }
 
@@ -579,8 +582,43 @@ public class MainActivity extends ComponentActivity {
                         view.loadUrl(targetUrl);
                         return;
                     }
+                    if (request.isForMainFrame()) {
+                        String errorMsg = (error != null && error.getDescription() != null) ? error.getDescription().toString() : "";
+                        if (errorMsg.contains("ERR_CACHE_MISS") && isNetworkAvailable()) {
+                            view.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                            view.loadUrl(url);
+                            return;
+                        }
+                        if (view != null) {
+                            view.stopLoading();
+                        }
+                        showCustomErrorPage(view, url, errorMsg);
+                        return;
+                    }
                 }
                 super.onReceivedError(view, request, error);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                if (fullScreenLoadingOverlay != null) {
+                    fullScreenLoadingOverlay.setVisibility(View.GONE);
+                }
+                if (failingUrl != null && failingUrl.startsWith("eformx://")) {
+                    view.stopLoading();
+                    String targetUrl = parseEformxUrl(failingUrl);
+                    view.loadUrl(targetUrl);
+                    return;
+                }
+                if (description != null && description.contains("ERR_CACHE_MISS") && isNetworkAvailable()) {
+                    view.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                    view.loadUrl(failingUrl);
+                    return;
+                }
+                if (view != null) {
+                    view.stopLoading();
+                }
+                showCustomErrorPage(view, failingUrl, description);
             }
         });
 
@@ -666,6 +704,15 @@ public class MainActivity extends ComponentActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
+                if (isErrorState || (errorOverlay != null && errorOverlay.getVisibility() == View.VISIBLE)) {
+                    showExitConfirmationDialog();
+                    return;
+                }
+                String currentUrl = (webView != null) ? webView.getUrl() : null;
+                if (currentUrl != null && (currentUrl.startsWith("data:") || currentUrl.contains("error"))) {
+                    showExitConfirmationDialog();
+                    return;
+                }
                 if (webView != null && webView.canGoBack()) {
                     webView.goBack();
                 } else {
@@ -772,6 +819,113 @@ public class MainActivity extends ComponentActivity {
         return "https://apply.eformx.com/" + stripped;
     }
 
+    private void applySmartCacheStrategy(String url) {
+        if (url == null || webView == null) return;
+        WebSettings settings = webView.getSettings();
+
+        if (!isNetworkAvailable()) {
+            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            return;
+        }
+
+        try {
+            Uri uri = Uri.parse(url);
+            String versionParam = uri.getQueryParameter("VERSION");
+            if (versionParam == null) {
+                versionParam = uri.getQueryParameter("version");
+            }
+            if (versionParam == null) {
+                versionParam = uri.getQueryParameter("cache");
+            }
+            if (versionParam == null) {
+                versionParam = uri.getQueryParameter("v");
+            }
+            if (versionParam == null) {
+                versionParam = uri.getQueryParameter("ver");
+            }
+
+            if (versionParam != null) {
+                android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+                String cacheKey = "cache_ver_" + (uri.getPath() != null ? uri.getPath() : "main");
+                String savedCacheId = prefs.getString(cacheKey, null);
+
+                if (savedCacheId != null && savedCacheId.equalsIgnoreCase(versionParam)) {
+                    // Version matches: Load 100% from local disk cache without live server overhead
+                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                } else {
+                    // New or changed version: Fetch fresh live page from network and update saved version
+                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                    prefs.edit().putString(cacheKey, versionParam).apply();
+                }
+            } else {
+                // Page loaded once: Prefer local disk cache
+                settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            }
+        } catch (Exception e) {
+            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        }
+    }
+
+    private void showCustomErrorPage(WebView view, String failingUrl, String errorMsg) {
+        if (view == null) return;
+        isErrorState = true;
+        if (fullScreenLoadingOverlay != null) {
+            fullScreenLoadingOverlay.setVisibility(View.GONE);
+        }
+        String safeUrl = (failingUrl != null && !failingUrl.isEmpty()) ? failingUrl : "https://eformx.com/app.php";
+        String cleanErrorMsg = (errorMsg != null && !errorMsg.isEmpty()) ? errorMsg : "";
+        String errorBadgeHtml = !cleanErrorMsg.isEmpty() ? "<div class=\"error-badge\">" + cleanErrorMsg + "</div>" : "";
+
+        String htmlData = "<!DOCTYPE html>"
+                + "<html lang=\"en\">"
+                + "<head>"
+                + "<meta charset=\"UTF-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\">"
+                + "<style>"
+                + "  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-tap-highlight-color: transparent; }"
+                + "  body { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); color: #0f172a; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; overflow: hidden; }"
+                + "  .container { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; animation: fadeInUp 0.5s ease-out; }"
+                + "  .illustration-wrapper { position: relative; width: 120px; height: 120px; margin-bottom: 24px; display: flex; align-items: center; justify-content: center; }"
+                + "  .glow-bg { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, rgba(37,99,235,0) 70%); border-radius: 50%; animation: pulseGlow 3s infinite ease-in-out; }"
+                + "  .icon-circle { position: relative; width: 88px; height: 88px; background: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04); border: 1px solid #e2e8f0; }"
+                + "  .icon-circle svg { width: 44px; height: 44px; stroke: #2563eb; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }"
+                + "  .badge-offline { position: absolute; bottom: 4px; right: 4px; width: 26px; height: 26px; background: #ef4444; border-radius: 50%; border: 3px solid #ffffff; display: flex; align-items: center; justify-content: center; color: #ffffff; box-shadow: 0 2px 5px rgba(239,68,68,0.3); }"
+                + "  .badge-offline svg { width: 12px; height: 12px; stroke: #ffffff; stroke-width: 3; fill: none; }"
+                + "  h2 { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.02em; }"
+                + "  p { font-size: 14px; color: #64748b; line-height: 1.5; margin-bottom: 16px; max-width: 320px; font-weight: 400; }"
+                + "  .error-badge { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-size: 13px; font-weight: 600; font-family: monospace, sans-serif; padding: 6px 16px; border-radius: 20px; margin-bottom: 28px; display: inline-block; word-break: break-all; max-width: 340px; }"
+                + "  .btn-retry { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 50px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: 240px; box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); outline: none; }"
+                + "  .btn-retry:active { transform: scale(0.96); box-shadow: 0 4px 12px -2px rgba(37, 99, 235, 0.5); }"
+                + "  .btn-retry svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.3s ease; }"
+                + "  .btn-retry:active svg { transform: rotate(180deg); }"
+                + "  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }"
+                + "  @keyframes pulseGlow { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }"
+                + "</style>"
+                + "</head>"
+                + "<body>"
+                + "  <div class=\"container\">"
+                + "    <div class=\"illustration-wrapper\">"
+                + "      <div class=\"glow-bg\"></div>"
+                + "      <div class=\"icon-circle\">"
+                + "        <svg viewBox=\"0 0 24 24\"><path d=\"M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01\"/></svg>"
+                + "        <div class=\"badge-offline\"><svg viewBox=\"0 0 24 24\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"></line><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"></line></svg></div>"
+                + "      </div>"
+                + "    </div>"
+                + "    <h2>App Not Loaded</h2>"
+                + "    <p>Could not connect to the server. Please check your internet connection and try again.</p>"
+                +      errorBadgeHtml
+                + "    <button class=\"btn-retry\" onclick=\"location.href='" + safeUrl.replace("'", "\\'") + "'\">"
+                + "      <svg viewBox=\"0 0 24 24\"><path d=\"M23 4v6h-6M1 20v-6h6\"></path><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"></path></svg>"
+                + "      <span>Reload</span>"
+                + "    </button>"
+                + "  </div>"
+                + "</body>"
+                + "</html>";
+
+        view.stopLoading();
+        view.post(() -> view.loadDataWithBaseURL(safeUrl, htmlData, "text/html", "UTF-8", null));
+    }
+
     private String convertToWhatsappScheme(String rawUrl) {
         if (rawUrl == null) return rawUrl;
         if (rawUrl.startsWith("whatsapp://")) {
@@ -804,47 +958,6 @@ public class MainActivity extends ComponentActivity {
             return sb.toString();
         } catch (Exception e) {
             return rawUrl;
-        }
-    }
-
-    private void applySmartCacheStrategy(String url) {
-        if (url == null || webView == null) return;
-        try {
-            Uri uri = Uri.parse(url);
-            String versionParam = uri.getQueryParameter("VERSION");
-            if (versionParam == null) {
-                versionParam = uri.getQueryParameter("version");
-            }
-            if (versionParam == null) {
-                versionParam = uri.getQueryParameter("cache");
-            }
-
-            if (versionParam != null) {
-                android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
-                String savedCacheId = prefs.getString("saved_cache_id", null);
-
-                if (savedCacheId != null && savedCacheId.equalsIgnoreCase(versionParam)) {
-                    // SAME VERSION! Load 100% Pure Offline from local disk cache with 0ms network overhead
-                    webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
-                } else {
-                    // NEW/DIFFERENT VERSION! Fetch fresh page data from network and update saved VERSION
-                    if (isNetworkAvailable()) {
-                        webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
-                    } else {
-                        webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
-                    }
-                    prefs.edit().putString("saved_cache_id", versionParam).apply();
-                }
-            } else {
-                // Normal page without VERSION parameter
-                if (isNetworkAvailable()) {
-                    webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-                } else {
-                    webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 

@@ -34,6 +34,7 @@ Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GP
 | **`Android.requestAllPermissions()`** | None | `void` | Triggers prompt for all missing permissions (Notifications, Location GPS) | `Android.requestAllPermissions();` |
 | **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();` |
 | **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
+| **`AndroidShare.share(title, text, url)`** | `title`, `text`, `url` (Strings) | `void` | Triggers native Android system Share Sheet intent to share links/text via WhatsApp, Email, Messages, etc. | `AndroidShare.share('eFormX', 'Check out eFormX', 'https://eformx.com');` |
 
 ---
 
@@ -75,6 +76,55 @@ if (navigator.geolocation) {
             console.error("HTML5 Error:", err.message);
         }
     );
+}
+```
+
+#### 4. Native Web Share API (`navigator.share` / `injectSharePolyfill`)
+
+The eFormX Android application automatically injects a JavaScript polyfill (`injectSharePolyfill`) into loaded web pages. This maps the standard W3C Web Share API (`navigator.share`) directly to the native Android System Share Intent sheet:
+
+```javascript
+// Standard W3C Web Share API (Automatically polyfilled inside eFormX App)
+if (navigator.share) {
+    navigator.share({
+        title: 'eFormX Digital Portal',
+        text: 'Check out eFormX services for online applications!',
+        url: 'https://apply.eformx.com'
+    }).then(function() {
+        console.log('Shared successfully via native Android share sheet');
+    }).catch(function(err) {
+        console.error('Share failed:', err);
+    });
+} else if (window.AndroidShare) {
+    // Direct JavaScript Interface fallback
+    window.AndroidShare.share(
+        'eFormX Digital Portal',
+        'Check out eFormX services for online applications!',
+        'https://apply.eformx.com'
+    );
+}
+```
+
+##### ⚙️ How `injectSharePolyfill` Works Under the Hood:
+
+Inside `MainActivity.java`, the WebView automatically executes the polyfill injection on page load:
+
+```java
+private void injectSharePolyfill(WebView view) {
+    String js = "if (window.AndroidShare) {" +
+            "  navigator.share = function(data) {" +
+            "    return new Promise(function(resolve, reject) {" +
+            "      try {" +
+            "        var title = (data && data.title) ? data.title : '';" +
+            "        var text = (data && data.text) ? data.text : '';" +
+            "        var url = (data && data.url) ? data.url : '';" +
+            "        window.AndroidShare.share(title, text, url);" +
+            "        resolve();" +
+            "      } catch(e) { reject(e); }" +
+            "    });" +
+            "  };" +
+            "}";
+    view.evaluateJavascript(js, null);
 }
 ```
 
@@ -170,6 +220,13 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
             <a href="https://wa.me/919876543210?text=Namaste%20eFormX" class="link-item">💬 Open WhatsApp Native Chat</a>
         </div>
 
+        <!-- 6. Web Share API (Android Native System Share) -->
+        <div class="card">
+            <h2>📤 Native Web Share API</h2>
+            <button class="btn btn-primary" onclick="testWebShare()">Share via Android Native Sheet</button>
+            <div id="shareOutput" class="output-box">Share status will appear here...</div>
+        </div>
+
     </div>
 
     <script>
@@ -257,6 +314,26 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
 
         function testRequestAllPermissions() {
             if (isBridgeAvailable() && window.Android.requestAllPermissions) window.Android.requestAllPermissions();
+        }
+
+        function testWebShare() {
+            let out = document.getElementById('shareOutput');
+            if (navigator.share) {
+                navigator.share({
+                    title: 'eFormX Digital Portal',
+                    text: 'Check out eFormX services for online applications!',
+                    url: 'https://apply.eformx.com'
+                }).then(function() {
+                    out.innerHTML = "<b>Status:</b> <span class='badge-green'>SUCCESS: Share Sheet Opened</span>";
+                }).catch(function(err) {
+                    out.innerHTML = "<b>Status:</b> Cancelled or Error (" + err + ")";
+                });
+            } else if (window.AndroidShare) {
+                window.AndroidShare.share('eFormX Digital Portal', 'Check out eFormX services!', 'https://apply.eformx.com');
+                out.innerHTML = "<b>Status:</b> <span class='badge-green'>SUCCESS: AndroidShare Called</span>";
+            } else {
+                out.innerHTML = "<b>Status:</b> <span class='badge-red'>Web Share Not Supported</span>";
+            }
         }
     </script>
 </body>
