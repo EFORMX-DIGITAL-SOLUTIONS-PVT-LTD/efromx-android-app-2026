@@ -62,6 +62,7 @@ public class MainActivity extends ComponentActivity {
     private AndroidBridge androidBridge;
     private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isErrorState = false;
+    private boolean hasLoadedAnyPageSuccessfully = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -114,6 +115,13 @@ public class MainActivity extends ComponentActivity {
                     }
                     String token = task.getResult();
                     android.util.Log.d("FCM_TOKEN", token);
+                    if (token != null && !token.trim().isEmpty()) {
+                        getSharedPreferences("eformx_prefs", MODE_PRIVATE)
+                                .edit()
+                                .putString("fcm_token", token)
+                                .apply();
+                        MyFirebaseMessagingService.registerFcmTokenOnServer(MainActivity.this, token);
+                    }
                 });
 
         com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all")
@@ -124,8 +132,6 @@ public class MainActivity extends ComponentActivity {
                         android.util.Log.w("FCM", "Topic subscription failed", task.getException());
                     }
                 });
-
-        checkAndRequestAutoStartPermission();
 
         int themeColor = Color.WHITE;
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
@@ -465,6 +471,10 @@ public class MainActivity extends ComponentActivity {
 
         webView.setWebViewClient(new WebViewClient() {
             private void injectSharePolyfill(WebView view) {
+                String token = getSharedPreferences("eformx_prefs", MODE_PRIVATE).getString("fcm_token", "");
+                String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+                if (deviceId == null) deviceId = "";
+
                 String js = "if (window.AndroidShare) {" +
                         "  navigator.share = function(data) {" +
                         "    return new Promise(function(resolve, reject) {" +
@@ -477,7 +487,9 @@ public class MainActivity extends ComponentActivity {
                         "      } catch(e) { reject(e); }" +
                         "    });" +
                         "  };" +
-                        "}";
+                        "}" +
+                        "window.fcm_token = '" + token + "';" +
+                        "window.device_id = '" + deviceId + "';";
                 view.evaluateJavascript(js, null);
             }
 
@@ -577,6 +589,9 @@ public class MainActivity extends ComponentActivity {
                     if (fullScreenLoadingOverlay != null) {
                         fullScreenLoadingOverlay.setVisibility(View.GONE);
                     }
+                }
+                if (!isErrorState && url != null && !url.startsWith("data:") && !url.contains("error")) {
+                    hasLoadedAnyPageSuccessfully = true;
                 }
                 if (url != null && !url.startsWith("data:")) {
                     isErrorState = false;
@@ -718,20 +733,7 @@ public class MainActivity extends ComponentActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (isErrorState || (errorOverlay != null && errorOverlay.getVisibility() == View.VISIBLE)) {
-                    showExitConfirmationDialog();
-                    return;
-                }
-                String currentUrl = (webView != null) ? webView.getUrl() : null;
-                if (currentUrl != null && (currentUrl.startsWith("data:") || currentUrl.contains("error"))) {
-                    showExitConfirmationDialog();
-                    return;
-                }
-                if (webView != null && webView.canGoBack()) {
-                    webView.goBack();
-                } else {
-                    showExitConfirmationDialog();
-                }
+                handleBackAction();
             }
         });
 
@@ -756,8 +758,10 @@ public class MainActivity extends ComponentActivity {
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             handleIntentData(intent.getData().toString());
         } else if (webView != null && webView.getUrl() == null) {
-            applySmartCacheStrategy("https://eformx.com/app.php");
-            webView.loadUrl("https://eformx.com/app.php");
+            String defaultUrl = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE)
+                    .getString(SecureConfig.getKeyRedirectUrl(), SecureConfig.getDefaultWebUrl());
+            applySmartCacheStrategy(defaultUrl);
+            webView.loadUrl(defaultUrl);
         }
     }
 
@@ -826,7 +830,12 @@ public class MainActivity extends ComponentActivity {
             return "http://" + stripped.substring("http:/".length());
         }
 
-        return "https://apply.eformx.com/" + stripped;
+        String baseUrl = getSharedPreferences("eformx_prefs", MODE_PRIVATE)
+                .getString("redirect_url", "https://eformx.com/");
+        if (!baseUrl.endsWith("/")) {
+            baseUrl += "/";
+        }
+        return baseUrl + stripped;
     }
 
     private void applySmartCacheStrategy(String url) {
@@ -889,7 +898,11 @@ public class MainActivity extends ComponentActivity {
         if (fullScreenLoadingOverlay != null) {
             fullScreenLoadingOverlay.setVisibility(View.GONE);
         }
-        String safeUrl = (failingUrl != null && !failingUrl.isEmpty()) ? failingUrl : "https://eformx.com/app.php";
+        String defaultUrl = getSharedPreferences("eformx_prefs", MODE_PRIVATE)
+                .getString("redirect_url", "https://eformx.com/");
+        String safeUrl = (failingUrl != null && !failingUrl.isEmpty() && !failingUrl.contains("app.php"))
+                ? failingUrl
+                : defaultUrl;
         String cleanErrorMsg = (errorMsg != null && !errorMsg.isEmpty()) ? errorMsg : "";
         String errorBadgeHtml = !cleanErrorMsg.isEmpty() ? "<div class=\"error-badge\">" + cleanErrorMsg + "</div>" : "";
 
@@ -931,7 +944,7 @@ public class MainActivity extends ComponentActivity {
                 + "    <h2>App Not Loaded</h2>"
                 + "    <p>Could not connect to the server. Please check your internet connection and try again.</p>"
                 +      errorBadgeHtml
-                + "    <button class=\"btn-retry\" onclick=\"location.href='" + safeUrl.replace("'", "\\'") + "'\">"
+                + "    <button class=\"btn-retry\" onclick=\"if(window.AndroidShare && window.AndroidShare.reloadApp){window.AndroidShare.reloadApp();}else{location.href='" + defaultUrl.replace("'", "\\'") + "';}\">"
                 + "      <svg viewBox=\"0 0 24 24\"><path d=\"M23 4v6h-6M1 20v-6h6\"></path><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"></path></svg>"
                 + "      <span>Reload</span>"
                 + "    </button>"
@@ -940,7 +953,10 @@ public class MainActivity extends ComponentActivity {
                 + "</html>";
 
         view.stopLoading();
-        view.post(() -> view.loadDataWithBaseURL(safeUrl, htmlData, "text/html", "UTF-8", null));
+        if (!hasLoadedAnyPageSuccessfully) {
+            view.clearHistory();
+        }
+        view.post(() -> view.loadDataWithBaseURL(defaultUrl, htmlData, "text/html", "UTF-8", null));
     }
 
     private String convertToWhatsappScheme(String rawUrl) {
@@ -1126,6 +1142,41 @@ public class MainActivity extends ComponentActivity {
                 }
             });
         }
+
+        @android.webkit.JavascriptInterface
+        public void reloadApp() {
+            runOnUiThread(() -> {
+                if (webView != null) {
+                    if (!isNetworkAvailable()) {
+                        Toast.makeText(MainActivity.this, "इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया इंटरनेट चालू करें।", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    isErrorState = false;
+                    String defaultUrl = getSharedPreferences("eformx_prefs", MODE_PRIVATE)
+                            .getString("redirect_url", "https://eformx.com/");
+                    applySmartCacheStrategy(defaultUrl);
+                    if (!hasLoadedAnyPageSuccessfully) {
+                        webView.clearHistory();
+                    }
+                    webView.loadUrl(defaultUrl);
+                }
+            });
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getFcmToken() {
+            return androidBridge != null ? androidBridge.getFcmToken() : "";
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getDeviceId() {
+            return androidBridge != null ? androidBridge.getDeviceId() : "";
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getDeviceInfo() {
+            return androidBridge != null ? androidBridge.getDeviceInfo() : "{}";
+        }
     }
 
     private void showErrorOverlay() {
@@ -1221,6 +1272,60 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
+    private void handleBackAction() {
+        if (isErrorState || (errorOverlay != null && errorOverlay.getVisibility() == View.VISIBLE)) {
+            showExitConfirmationDialog();
+            return;
+        }
+        String currentUrl = (webView != null) ? webView.getUrl() : null;
+        if (currentUrl != null && (currentUrl.startsWith("data:") || currentUrl.contains("error") || currentUrl.contains("android=exit"))) {
+            showExitConfirmationDialog();
+            return;
+        }
+        if (!hasLoadedAnyPageSuccessfully) {
+            showExitConfirmationDialog();
+            return;
+        }
+        navigateBackOrExit();
+    }
+
+    private void navigateBackOrExit() {
+        if (webView == null || !webView.canGoBack()) {
+            showExitConfirmationDialog();
+            return;
+        }
+
+        try {
+            android.webkit.WebBackForwardList history = webView.copyBackForwardList();
+            int currentIndex = history.getCurrentIndex();
+            int targetStep = 0;
+
+            for (int i = currentIndex - 1; i >= 0; i--) {
+                android.webkit.WebHistoryItem item = history.getItemAtIndex(i);
+                if (item != null) {
+                    String url = item.getUrl();
+                    if (url != null && !url.startsWith("data:") && !url.contains("error") && !url.contains("about:blank")) {
+                        targetStep = i - currentIndex;
+                        break;
+                    }
+                }
+            }
+
+            if (targetStep < 0 && webView.canGoBackOrForward(targetStep)) {
+                isErrorState = false;
+                webView.goBackOrForward(targetStep);
+            } else {
+                showExitConfirmationDialog();
+            }
+        } catch (Exception e) {
+            if (webView.canGoBack()) {
+                webView.goBack();
+            } else {
+                showExitConfirmationDialog();
+            }
+        }
+    }
+
     private int dpToPx(int dp) {
         return (int) (dp * getResources().getDisplayMetrics().density);
     }
@@ -1238,18 +1343,8 @@ public class MainActivity extends ComponentActivity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            String currentUrl = webView != null ? webView.getUrl() : null;
-            if (currentUrl != null && currentUrl.contains("android=exit")) {
-                showExitConfirmationDialog();
-                return true;
-            }
-            if (webView != null && webView.canGoBack()) {
-                webView.goBack();
-                return true;
-            } else {
-                showExitConfirmationDialog();
-                return true;
-            }
+            handleBackAction();
+            return true;
         }
         return super.onKeyDown(keyCode, event);
     }

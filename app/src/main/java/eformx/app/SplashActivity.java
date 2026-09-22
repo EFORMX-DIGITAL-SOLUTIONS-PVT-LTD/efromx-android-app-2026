@@ -35,16 +35,16 @@ public class SplashActivity extends Activity {
     private Runnable splashRunnable;
 
     private final String[][] slideTitles = {
-        {"सभी डिजिटल सेवाएँ", "एक ही जगह"},
-        {"तेज़ और विश्वसनीय", "प्रोसेसिंग"},
-        {"आपका अपना", "डिजिटल कैफ़े"},
+        {"रियल एस्टेट, ऑनलाइन फॉर्म\nऔर IT सेवाएँ", "एक ही जगह"},
+        {"रियल एस्टेट सेवाएँ", "प्रॉपर्टी खरीदें व बेचें"},
+        {"IT एवं सॉफ्टवेयर सेवाएँ", "वेब और ऐप विकास"},
         {"ज़रूरी अनुमतियाँ", "और उनके लाभ"}
     };
 
     private final String[] slideSubtitles = {
-        "फॉर्म भरें, दस्तावेज़ अपलोड करें,\nभुगतान करें और कई सेवाओं का लाभ उठाएं।",
-        "ऑनलाइन रजिस्ट्रेशन, दस्तावेज़ प्रोसेसिंग\nऔर त्वरित वेरिफिकेशन - मिनटों में।",
-        "सरकारी योजनाएं, फॉर्म भरना, दस्तावेज़ सेवाएं,\nभुगतान, रिचार्ज और बहुत कुछ - एक ही छत के नीचे।",
+        "आपकी ज़रूरतों के लिए डिजिटल समाधान\nअब और भी आसान, भरोसेमंद और तेज़।",
+        "प्लॉट, मकान, दुकान और प्रॉपर्टी वेरिफिकेशन\nअब सुरक्षित, पारदर्शी और सबसे आसान।",
+        "वेबसाइट, मोबाइल ऐप, बिलिंग और कस्टम सॉफ्टवेयर\nआपके व्यापार को दें आधुनिक डिजिटल पहचान।",
         "बिना किसी रुकावट के बेहतरीन सेवाओं के लिए\nनिम्नलिखित अनुमतियां देना आवश्यक है।"
     };
 
@@ -56,11 +56,13 @@ public class SplashActivity extends Activity {
     };
 
     private FrameLayout splashRootLayout;
+    private volatile String redirectUrl = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        checkAppInstallApi();
         showBrandingSplashScreen();
 
         splashHandler = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -71,8 +73,11 @@ public class SplashActivity extends Activity {
                         .alpha(0f)
                         .setDuration(300)
                         .withEndAction(() -> {
-                            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+                            SharedPreferences prefs = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE);
                             boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
+                            if (getIntent().getBooleanExtra("reset_onboarding", false)) {
+                                hasSeenOnboarding = false;
+                            }
                             if (hasSeenOnboarding) {
                                 launchMainActivity();
                             } else {
@@ -81,8 +86,11 @@ public class SplashActivity extends Activity {
                         })
                         .start();
             } else {
-                SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+                SharedPreferences prefs = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE);
                 boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
+                if (getIntent().getBooleanExtra("reset_onboarding", false)) {
+                    hasSeenOnboarding = false;
+                }
                 if (hasSeenOnboarding) {
                     launchMainActivity();
                 } else {
@@ -552,26 +560,67 @@ public class SplashActivity extends Activity {
         card.setElevation(dpToPx(6));
 
         if (slideIndex == 0) {
-            // Laurel Wreath 5-Star Header Badge
-            TextView starBadge = new TextView(this);
-            starBadge.setText("🏆  ⭐⭐⭐⭐⭐\nभारत का 1ONE DIGITAL CAFE");
-            starBadge.setTextSize(12);
-            starBadge.setTextColor(Color.parseColor("#0052FF"));
-            starBadge.setTypeface(Typeface.DEFAULT_BOLD);
-            starBadge.setGravity(Gravity.CENTER);
+            // Header: Stars + भारत का 1ONE DIGITAL CAFE + Tagline
+            LinearLayout headerLayout = new LinearLayout(this);
+            headerLayout.setOrientation(LinearLayout.VERTICAL);
+            headerLayout.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            headerParams.bottomMargin = dpToPx(6);
+            headerLayout.setLayoutParams(headerParams);
 
-            LinearLayout.LayoutParams starParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            starParams.bottomMargin = dpToPx(6);
-            card.addView(starBadge, starParams);
+            TextView starsTv = new TextView(this);
+            starsTv.setText("⭐⭐⭐⭐⭐");
+            starsTv.setTextSize(11);
+            starsTv.setGravity(Gravity.CENTER);
+            headerLayout.addView(starsTv);
+
+            LinearLayout cafeRow = new LinearLayout(this);
+            cafeRow.setOrientation(LinearLayout.HORIZONTAL);
+            cafeRow.setGravity(Gravity.CENTER);
+            cafeRow.setPadding(0, dpToPx(2), 0, dpToPx(2));
+
+            TextView cafeLeft = new TextView(this);
+            cafeLeft.setText("भारत का ");
+            cafeLeft.setTextSize(12);
+            cafeLeft.setTextColor(Color.parseColor("#0052FF"));
+            cafeLeft.setTypeface(Typeface.DEFAULT_BOLD);
+
+            TextView cafePill = new TextView(this);
+            cafePill.setText("1ONE");
+            cafePill.setTextSize(9);
+            cafePill.setTextColor(Color.WHITE);
+            cafePill.setTypeface(Typeface.DEFAULT_BOLD);
+            cafePill.setPadding(dpToPx(4), dpToPx(1), dpToPx(4), dpToPx(1));
+            GradientDrawable cafePillBg = new GradientDrawable();
+            cafePillBg.setColor(Color.parseColor("#FF6B00"));
+            cafePillBg.setCornerRadius(dpToPx(6));
+            cafePill.setBackground(cafePillBg);
+
+            TextView cafeRight = new TextView(this);
+            cafeRight.setText(" DIGITAL CAFE");
+            cafeRight.setTextSize(12);
+            cafeRight.setTextColor(Color.parseColor("#0052FF"));
+            cafeRight.setTypeface(Typeface.DEFAULT_BOLD);
+
+            cafeRow.addView(cafeLeft);
+            cafeRow.addView(cafePill);
+            cafeRow.addView(cafeRight);
+            headerLayout.addView(cafeRow);
+
+            TextView audienceTv = new TextView(this);
+            audienceTv.setText("लोगों के लिए  •  व्यवसाय के लिए  •  बेहतर भारत के लिए");
+            audienceTv.setTextSize(10);
+            audienceTv.setTextColor(Color.parseColor("#64748B"));
+            audienceTv.setGravity(Gravity.CENTER);
+            headerLayout.addView(audienceTv);
+
+            card.addView(headerLayout);
 
             // Generated 3D HD Illustration Image View
             ImageView illustrationImg = new ImageView(this);
             illustrationImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int resId = getResources().getIdentifier(drawableNames[0], "drawable", getPackageName());
-            if (resId != 0) {
-                illustrationImg.setImageResource(resId);
-            }
+            illustrationImg.setImageResource(R.drawable.onboarding_slide1_form);
             LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
             imgParams.gravity = Gravity.CENTER;
@@ -589,34 +638,31 @@ public class SplashActivity extends Activity {
 
             card.addView(chipsLayout);
         } else if (slideIndex == 1) {
-            // Generated 3D HD Illustration Image View
+            // Generated 3D HD Illustration Image View (Real Estate)
             ImageView illustrationImg = new ImageView(this);
             illustrationImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int resId = getResources().getIdentifier(drawableNames[1], "drawable", getPackageName());
-            if (resId != 0) {
-                illustrationImg.setImageResource(resId);
-            }
+            illustrationImg.setImageResource(R.drawable.onboarding_slide2_speed);
             LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
             imgParams.gravity = Gravity.CENTER;
             imgParams.bottomMargin = dpToPx(8);
             card.addView(illustrationImg, imgParams);
 
-            // 4 Grid Badges: 100% सुरक्षित, तेज़ प्रोसेसिंग, भरोसेमंद सेवाएं, 24/7 सपोर्ट
+            // 4 Grid Badges: प्रॉपर्टी खरीद-बिक्री, दस्तावेज़ वेरिफिकेशन, आसान रेंटल सेवा, 100% सुरक्षित डील
             LinearLayout row1 = new LinearLayout(this);
             row1.setOrientation(LinearLayout.HORIZONTAL);
             row1.setGravity(Gravity.CENTER);
 
-            row1.addView(createGridItem("✔", "100% सुरक्षित"));
-            row1.addView(createGridItem("⚡", "तेज़ प्रोसेसिंग"));
+            row1.addView(createGridItem("🏠", "प्रॉपर्टी खरीद-बिक्री"));
+            row1.addView(createGridItem("📑", "दस्तावेज़ वेरिफिकेशन"));
 
             LinearLayout row2 = new LinearLayout(this);
             row2.setOrientation(LinearLayout.HORIZONTAL);
             row2.setGravity(Gravity.CENTER);
             row2.setPadding(0, dpToPx(6), 0, 0);
 
-            row2.addView(createGridItem("🤝", "भरोसेमंद सेवाएं"));
-            row2.addView(createGridItem("🎧", "24/7 सपोर्ट"));
+            row2.addView(createGridItem("🔑", "आसान रेंटल सेवा"));
+            row2.addView(createGridItem("🛡️", "100% सुरक्षित डील"));
 
             card.addView(row1);
             card.addView(row2);
@@ -626,20 +672,17 @@ public class SplashActivity extends Activity {
             iconRow.setOrientation(LinearLayout.HORIZONTAL);
             iconRow.setGravity(Gravity.CENTER);
 
-            iconRow.addView(createIconBadge("💙", "सुविधाजनक"));
-            iconRow.addView(createIconBadge("🚀", "किफायती"));
-            iconRow.addView(createIconBadge("🛡️", "भरोसेमंद"));
-            iconRow.addView(createIconBadge("👨‍💼", "हमेशा साथ"));
+            iconRow.addView(createIconBadge("💻", "वेबसाइट"));
+            iconRow.addView(createIconBadge("📱", "मोबाइल ऐप"));
+            iconRow.addView(createIconBadge("⚙️", "सॉफ्टवेयर"));
+            iconRow.addView(createIconBadge("☁️", "क्लाउड"));
 
             card.addView(iconRow);
 
-            // Generated 3D HD Illustration Image View
+            // Generated 3D HD Illustration Image View (IT Services)
             ImageView illustrationImg = new ImageView(this);
             illustrationImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int resId = getResources().getIdentifier(drawableNames[2], "drawable", getPackageName());
-            if (resId != 0) {
-                illustrationImg.setImageResource(resId);
-            }
+            illustrationImg.setImageResource(R.drawable.onboarding_slide3_cafe);
             LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
             imgParams.gravity = Gravity.CENTER;
@@ -649,7 +692,7 @@ public class SplashActivity extends Activity {
 
             // Tricolor Banner Ribbon
             TextView ribbonTv = new TextView(this);
-            ribbonTv.setText("──  एक प्लेटफ़ॉर्म अनेक संभावनाएँ  ──");
+            ribbonTv.setText("──  वेबसाइट  •  मोबाइल ऐप  •  कस्टम सॉफ्टवेयर  ──");
             ribbonTv.setTextSize(12);
             ribbonTv.setTextColor(Color.parseColor("#0052FF"));
             ribbonTv.setTypeface(Typeface.DEFAULT_BOLD);
@@ -690,8 +733,9 @@ public class SplashActivity extends Activity {
                 }
             }));
 
-            permList.addView(createPermissionRow("⚡", "ऑटो-स्टार्ट (Auto-Start)", "ऐप बंद होने पर भी कॉल और अलर्ट बजने के लिए।", false, v -> {
-                checkAndRequestAutoStartPermission();
+            boolean hasAutoStart = getSharedPreferences("eformx_prefs", MODE_PRIVATE).getBoolean("has_prompted_autostart", false);
+            permList.addView(createPermissionRow("⚡", "ऑटो-स्टार्ट (Auto-Start)", "ऐप बंद होने पर भी कॉल और अलर्ट बजने के लिए।", hasAutoStart, v -> {
+                forceOpenAutoStartSettings();
             }));
 
             // Prominent "Allow All Permissions / अनुमति दें ➔" Action Button inside card
@@ -912,7 +956,6 @@ public class SplashActivity extends Activity {
     }
 
     private void proceedAfterPermission() {
-        checkAndRequestAutoStartPermission();
         SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
         prefs.edit().putBoolean("has_seen_onboarding", true).apply();
         launchMainActivity();
@@ -927,7 +970,18 @@ public class SplashActivity extends Activity {
     }
 
     private void checkAndRequestAutoStartPermission() {
+        SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+        if (prefs.getBoolean("has_prompted_autostart", false)) {
+            return;
+        }
+        forceOpenAutoStartSettings();
+    }
+
+    private void forceOpenAutoStartSettings() {
         try {
+            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+            prefs.edit().putBoolean("has_prompted_autostart", true).apply();
+
             String manufacturer = android.os.Build.MANUFACTURER.toLowerCase();
             Intent intent = new Intent();
 
@@ -955,8 +1009,61 @@ public class SplashActivity extends Activity {
 
     private void launchMainActivity() {
         Intent intent = new Intent(SplashActivity.this, MainActivity.class);
+        String urlToLoad = (redirectUrl != null && !redirectUrl.isEmpty())
+                ? redirectUrl
+                : getSharedPreferences("eformx_prefs", MODE_PRIVATE).getString("redirect_url", null);
+        if (urlToLoad != null && !urlToLoad.isEmpty()) {
+            intent.putExtra("target_url", urlToLoad);
+        }
         startActivity(intent);
         finish();
+    }
+
+    private void checkAppInstallApi() {
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            try {
+                java.net.URL url = new java.net.URL(SecureConfig.getInstallApiUrl());
+                conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.setRequestProperty("Accept", "application/json");
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                    java.io.BufferedReader in = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(conn.getInputStream()));
+                    StringBuilder response = new StringBuilder();
+                    String inputLine;
+                    while ((inputLine = in.readLine()) != null) {
+                        response.append(inputLine);
+                    }
+                    in.close();
+
+                    org.json.JSONObject json = new org.json.JSONObject(response.toString());
+                    if (json.optBoolean("status", false) || json.optInt("status_code", 0) == 200) {
+                        org.json.JSONObject data = json.optJSONObject("data");
+                        if (data != null && data.has("redirect_url")) {
+                            String urlString = data.optString("redirect_url", "").trim();
+                            if (!urlString.isEmpty()) {
+                                redirectUrl = urlString;
+                                getSharedPreferences("eformx_prefs", MODE_PRIVATE)
+                                        .edit()
+                                        .putString("redirect_url", redirectUrl)
+                                        .apply();
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                android.util.Log.e("SplashActivity", "Error checking install app API: " + e.getMessage());
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
+            }
+        }).start();
     }
 
     private int dpToPx(float dp) {

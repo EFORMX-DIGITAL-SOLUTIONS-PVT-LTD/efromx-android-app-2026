@@ -276,12 +276,68 @@ public class AndroidBridge {
     }
 
     @JavascriptInterface
+    public void startTracking(String apiUrl) {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            if (!hasLocationPermission()) {
+                openLocationPermission();
+                return;
+            }
+            android.content.Intent serviceIntent = new android.content.Intent(activity, LocationTrackingService.class);
+            serviceIntent.setAction(LocationTrackingService.ACTION_START_TRACKING);
+            if (apiUrl != null && !apiUrl.trim().isEmpty()) {
+                serviceIntent.putExtra(LocationTrackingService.EXTRA_API_URL, apiUrl.trim());
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                activity.startForegroundService(serviceIntent);
+            } else {
+                activity.startService(serviceIntent);
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void startTracking() {
+        startTracking(null);
+    }
+
+    @JavascriptInterface
+    public void stopTracking() {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            android.content.Intent serviceIntent = new android.content.Intent(activity, LocationTrackingService.class);
+            serviceIntent.setAction(LocationTrackingService.ACTION_STOP_TRACKING);
+            activity.startService(serviceIntent);
+        });
+    }
+
+    @JavascriptInterface
+    public boolean isTrackingActive() {
+        return LocationTrackingService.isTrackingActive();
+    }
+
+    @JavascriptInterface
     public String getLocation() {
         if (activity == null) return "{\"error\":true,\"message\":\"Activity null\"}";
         try {
             if (ContextCompat.checkSelfPermission(activity, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(activity, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 return "{\"error\":true,\"message\":\"Permission not granted\"}";
+            }
+
+            // Prioritize fresh satellite fix from active Native GPS Listener
+            Location liveLoc = LocationTrackingService.getLatestLocation();
+            if (liveLoc != null) {
+                JSONObject json = new JSONObject();
+                json.put("latitude", liveLoc.getLatitude());
+                json.put("longitude", liveLoc.getLongitude());
+                json.put("accuracy", liveLoc.getAccuracy());
+                json.put("altitude", liveLoc.getAltitude());
+                json.put("speed", liveLoc.getSpeed());
+                json.put("time", liveLoc.getTime());
+                json.put("is_tracking", LocationTrackingService.isTrackingActive());
+                json.put("error", false);
+                return json.toString();
             }
 
             LocationManager lm = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
@@ -311,6 +367,7 @@ public class AndroidBridge {
                 json.put("altitude", bestLoc.getAltitude());
                 json.put("speed", bestLoc.getSpeed());
                 json.put("time", bestLoc.getTime());
+                json.put("is_tracking", LocationTrackingService.isTrackingActive());
                 json.put("error", false);
                 return json.toString();
             } else {

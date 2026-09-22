@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>eFormX Native App Feature Testbed & API Bridge</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0052FF;
+            --primary-glow: rgba(0, 82, 255, 0.35);
+            --primary-light: #EBF2FF;
+            --accent-orange: #FF6B00;
+            --accent-green: #059669;
+            --accent-red: #DC2626;
+            --bg-dark: #0A0F1D;
+            --card-dark: #121A2F;
+            --card-border: #1E2942;
+            --card-glow: rgba(255, 255, 255, 0.04);
+            --text-main: #F8FAFC;
+            --text-muted: #94A3B8;
+            --text-sub: #64748B;
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 16px 16px 60px 16px;
+            background-image: 
+                radial-gradient(circle at 10% 10%, rgba(0, 82, 255, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(255, 107, 0, 0.08) 0%, transparent 40%);
+            background-attachment: fixed;
+        }
+
+        /* Header Bar */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(18, 26, 47, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            margin-bottom: 20px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-badge {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #0052FF, #4D8BFF);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 20px;
+            color: #fff;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .header-text h1 {
+            font-size: 19px;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: -0.3px;
+        }
+
+        .header-text span {
+            font-size: 11px;
+            color: var(--text-sub);
+            font-weight: 500;
+        }
+
+        .bridge-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(5, 150, 105, 0.15);
+            border: 1px solid rgba(5, 150, 105, 0.3);
+            color: #34D399;
+        }
+
+        .bridge-pill.disconnected {
+            background: rgba(220, 38, 38, 0.15);
+            border-color: rgba(220, 38, 38, 0.3);
+            color: #F87171;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #34D399;
+            box-shadow: 0 0 8px #34D399;
+            animation: pulse 2s infinite;
+        }
+
+        .bridge-pill.disconnected .status-dot {
+            background: #F87171;
+            box-shadow: 0 0 8px #F87171;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.2); }
+        }
+
+        /* Section Container */
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin: 24px 4px 12px 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card-dark);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(0, 82, 255, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .card-title .icon {
+            font-size: 20px;
+        }
+
+        /* Code/Data Box */
+        .info-box {
+            background: #090D18;
+            border: 1px solid #1E283F;
+            border-radius: var(--radius-md);
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #38BDF8;
+            line-height: 1.6;
+            word-break: break-all;
+            max-height: 180px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid #1B243B;
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+        }
+
+        .info-label {
+            font-size: 10px;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+
+        .info-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Buttons & Actions */
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .btn-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        button, .btn-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: var(--radius-md);
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        button:active, .btn-link:active {
+            transform: scale(0.97);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0052FF, #1D68FF);
+            color: #fff;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .btn-orange {
+            background: linear-gradient(135deg, #FF6B00, #FF8533);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(255, 107, 0, 0.3);
+        }
+
+        .btn-green {
+            background: linear-gradient(135deg, #059669, #10B981);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(5, 150, 105, 0.3);
+        }
+
+        .btn-secondary {
+            background: #1A233A;
+            border: 1px solid #283554;
+            color: var(--text-main);
+        }
+
+        .btn-danger {
+            background: rgba(220, 38, 38, 0.15);
+            border: 1px solid rgba(220, 38, 38, 0.4);
+            color: #F87171;
+        }
+
+        /* Inputs */
+        .input-group {
+            margin-bottom: 12px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 12px 14px;
+            background: #090D18;
+            border: 1px solid #1E283F;
+            border-radius: var(--radius-md);
+            color: var(--text-main);
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus {
+            border-color: var(--primary);
+        }
+
+        /* Quick Scheme Chips */
+        .scheme-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .scheme-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 10px 12px;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: all 0.2s;
+        }
+
+        .scheme-card:active {
+            transform: scale(0.97);
+            background: rgba(0, 82, 255, 0.08);
+            border-color: var(--primary);
+        }
+
+        .scheme-icon {
+            font-size: 22px;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: #18223C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scheme-info {
+            overflow: hidden;
+        }
+
+        .scheme-name {
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .scheme-desc {
+            font-size: 10px;
+            color: var(--text-sub);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Camera / File Preview */
+        .preview-box {
+            width: 100%;
+            height: 140px;
+            border: 2px dashed #222E4D;
+            border-radius: var(--radius-md);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: var(--text-sub);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            background: #090D18;
+            margin-bottom: 12px;
+        }
+
+        .preview-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Toast Popup */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #1E293B;
+            border: 1px solid #334155;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        #toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header & Native Detection -->
+    <header class="header">
+        <div class="header-logo">
+            <div class="logo-badge">EX</div>
+            <div class="header-text">
+                <h1>eFormX Testbed</h1>
+                <span>Full Native Bridge & Feature Suite</span>
+            </div>
+        </div>
+        <div id="bridgeStatus" class="bridge-pill">
+            <span class="status-dot"></span>
+            <span id="bridgeText">Connecting...</span>
+        </div>
+    </header>
+
+    <!-- SECTION 1: Device Identity & FCM Token -->
+    <div class="section-title">📱 1. Device Identity & FCM Push Engine</div>
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">🔑</span> Device Registration Data</div>
+            <button class="btn-secondary" style="width: auto; padding: 6px 12px; font-size: 11px;" onclick="copyToken()">📋 Copy Token</button>
+        </div>
+        
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Device Model</div>
+                <div class="info-value" id="valModel">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Android OS</div>
+                <div class="info-value" id="valOs">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Network Type</div>
+                <div class="info-value" id="valNetwork">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">IP Address</div>
+                <div class="info-value" id="valIp">Loading...</div>
+            </div>
+        </div>
+
+        <div class="info-label" style="margin-left: 2px;">FCM Token (Target Token for Notifications):</div>
+        <div class="info-box" id="fcmTokenBox">Detecting Firebase Token...</div>
+
+        <button class="btn-primary" onclick="refreshDeviceInfo()">🔄 Refresh Live Device Info</button>
+    </div>
+
+    <!-- SECTION 2: Native Voice Speech (TTS) -->
+    <div class="section-title">🗣️ 2. Native Text-To-Speech (TTS) Voice</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">🎙️</span> Voice Announcement Engine</div>
+        <div class="input-group">
+            <input type="text" id="speakInput" class="input-field" value="नमस्ते! ई-फॉर्म-एक्स ऐप में आपका स्वागत है। सभी सेवाएं सफलतापूर्वक काम कर रही हैं।">
+        </div>
+        <div class="btn-grid" style="margin-bottom: 10px;">
+            <button class="btn-secondary" onclick="presetSpeech(1)">📢 हिंदी घोषणा</button>
+            <button class="btn-secondary" onclick="presetSpeech(2)">📞 कॉल अलर्ट स्पीच</button>
+        </div>
+        <button class="btn-orange" onclick="triggerSpeak()">🔊 बोलकर सुनाएं (Native TTS Speak)</button>
+    </div>
+
+    <!-- SECTION 3: Realtime GPS & 24/7 Background Tracking -->
+    <div class="section-title">📍 3. High-Precision GPS & Location Tracking</div>
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">🛰️</span> Live Satellite Fix</div>
+            <span id="trackingBadge" style="font-size: 10px; padding: 4px 8px; border-radius: 8px; background: #1E283F; color: #94A3B8;">Tracking: OFF</span>
+        </div>
+
+        <div class="info-box" id="locationBox">Press "Get Current GPS" to fetch high-precision coordinates.</div>
+
+        <div class="btn-grid" style="margin-bottom: 10px;">
+            <button class="btn-primary" onclick="fetchLocation()">🎯 Get Current GPS</button>
+            <button class="btn-secondary" onclick="requestLocPerm()">🔓 Location Perm</button>
+        </div>
+        <div class="btn-grid">
+            <button class="btn-green" onclick="startLocationTracking()">▶️ Start 24/7 Tracking</button>
+            <button class="btn-danger" onclick="stopLocationTracking()">⏹️ Stop Tracking</button>
+        </div>
+    </div>
+
+    <!-- SECTION 4: Native Android Share Sheet -->
+    <div class="section-title">📤 4. Native Share Sheet (navigator.share)</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">✨</span> System Chooser Share</div>
+        <div class="input-group">
+            <input type="text" id="shareText" class="input-field" value="eFormX App - भारत का 1ONE Digital Cafe! https://eformx.com">
+        </div>
+        <button class="btn-primary" onclick="triggerShare()">📤 Open Native Share Dialog</button>
+    </div>
+
+    <!-- SECTION 5: Camera & File Upload Integration -->
+    <div class="section-title">📷 5. Camera & File Chooser Integration</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">📂</span> Native Camera / File Picker</div>
+        
+        <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelected(event)">
+        <div class="preview-box" id="previewBox" onclick="document.getElementById('fileInput').click()">
+            <span style="font-size: 32px;">📷</span>
+            <span style="font-size: 12px; font-weight: 600;">Tap to Capture Photo or Pick Document</span>
+            <span style="font-size: 10px; color: var(--text-sub);">Tested via WebChromeClient.onShowFileChooser</span>
+        </div>
+
+        <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Open File / Camera Chooser</button>
+    </div>
+
+    <!-- SECTION 6: Supported Native Schemes & Deep Links -->
+    <div class="section-title">🔗 6. Supported URL Schemes & Deep Links</div>
+    <div class="card">
+        <div class="scheme-grid">
+            <a href="tel:+919876543210" class="scheme-card">
+                <div class="scheme-icon">📞</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">Phone Dialer</div>
+                    <div class="scheme-desc">tel:+919876543210</div>
+                </div>
+            </a>
+
+            <a href="https://wa.me/?text=Hello%20from%20eFormX%20App" class="scheme-card">
+                <div class="scheme-icon">💬</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">WhatsApp Direct</div>
+                    <div class="scheme-desc">wa.me / whatsapp://</div>
+                </div>
+            </a>
+
+            <a href="upi://pay?pa=eformx@upi&pn=eFormX&am=100&cu=INR" class="scheme-card">
+                <div class="scheme-icon">💳</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">UPI Apps</div>
+                    <div class="scheme-desc">GPay, PhonePe, Paytm</div>
+                </div>
+            </a>
+
+            <a href="mailto:support@eformx.com?subject=Help%20Request" class="scheme-card">
+                <div class="scheme-icon">✉️</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">Email App</div>
+                    <div class="scheme-desc">mailto:support@...</div>
+                </div>
+            </a>
+
+            <a href="geo:28.6139,77.2090?q=eFormX" class="scheme-card">
+                <div class="scheme-icon">🗺️</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">Google Maps</div>
+                    <div class="scheme-desc">geo:28.61,77.20</div>
+                </div>
+            </a>
+
+            <a href="https://eformx.com?browser=external" class="scheme-card">
+                <div class="scheme-icon">🌐</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">Chrome Browser</div>
+                    <div class="scheme-desc">?browser=external</div>
+                </div>
+            </a>
+
+            <a href="eformx://apply.eformx.com/status" class="scheme-card">
+                <div class="scheme-icon">🚀</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">Custom Scheme</div>
+                    <div class="scheme-desc">eformx://deep-link</div>
+                </div>
+            </a>
+
+            <a href="market://details?id=eformx.app" class="scheme-card">
+                <div class="scheme-icon">🛒</div>
+                <div class="scheme-info">
+                    <div class="scheme-name">Play Store</div>
+                    <div class="scheme-desc">market://details</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- SECTION 7: App Controls & System Navigation -->
+    <div class="section-title">⚙️ 7. Native Lifecycle & Dialog Controls</div>
+    <div class="card">
+        <div class="btn-grid">
+            <button class="btn-secondary" onclick="reloadApplication()">🔄 Reload WebView Cache</button>
+            <button class="btn-danger" onclick="triggerExitApp()">🚪 Trigger Exit App Dialog</button>
+        </div>
+    </div>
+
+    <!-- Toast Notification Element -->
+    <div id="toast">Notification Message</div>
+
+    <script>
+        // Detection & Initializer
+        window.addEventListener('DOMContentLoaded', () => {
+            detectBridge();
+            setTimeout(refreshDeviceInfo, 400);
+        });
+
+        function detectBridge() {
+            const isNative = !!(window.Android || window.AndroidShare);
+            const statusPill = document.getElementById('bridgeStatus');
+            const statusText = document.getElementById('bridgeText');
+
+            if (isNative) {
+                statusPill.className = 'bridge-pill';
+                statusText.innerText = 'Native Bridge Connected';
+            } else {
+                statusPill.className = 'bridge-pill disconnected';
+                statusText.innerText = 'Browser Mode (No Bridge)';
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2600);
+        }
+
+        // 1. Device Info & Token
+        function refreshDeviceInfo() {
+            detectBridge();
+            
+            // FCM Token detection from polyfill or native bridge
+            let token = window.fcm_token || '';
+            let deviceId = window.device_id || '';
+
+            if (window.Android && window.Android.getFcmToken) {
+                const nativeToken = window.Android.getFcmToken();
+                if (nativeToken) token = nativeToken;
+            }
+            if (window.Android && window.Android.getDeviceId) {
+                const nativeDevId = window.Android.getDeviceId();
+                if (nativeDevId) deviceId = nativeDevId;
+            }
+
+            document.getElementById('fcmTokenBox').innerText = token || 'No FCM token detected. (App might be running in web browser).';
+
+            // Rich Info Object
+            if (window.Android && window.Android.getDeviceInfo) {
+                try {
+                    const raw = window.Android.getDeviceInfo();
+                    const info = JSON.parse(raw);
+                    document.getElementById('valModel').innerText = (info.brand || '') + ' ' + (info.model || 'Android Device');
+                    document.getElementById('valOs').innerText = 'Android ' + (info.android_version || '14') + ' (SDK ' + (info.sdk_version || '34') + ')';
+                    document.getElementById('valNetwork').innerText = (info.network_type || 'CONNECTED');
+                    document.getElementById('valIp').innerText = (info.ip_address || '127.0.0.1');
+                    showToast('Device information updated!');
+                    return;
+                } catch(e) {
+                    console.error('Info parse error', e);
+                }
+            }
+
+            // Fallback for browser testing
+            document.getElementById('valModel').innerText = navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser';
+            document.getElementById('valOs').innerText = navigator.platform || 'Unknown';
+            document.getElementById('valNetwork').innerText = navigator.onLine ? 'ONLINE' : 'OFFLINE';
+            document.getElementById('valIp').innerText = '127.0.0.1';
+        }
+
+        function copyToken() {
+            const tokenText = document.getElementById('fcmTokenBox').innerText;
+            if (!tokenText || tokenText.includes('Detecting') || tokenText.includes('No FCM')) {
+                showToast('No valid token to copy');
+                return;
+            }
+            navigator.clipboard.writeText(tokenText).then(() => {
+                showToast('✅ FCM Token copied to clipboard!');
+            }).catch(() => {
+                showToast('Token: ' + tokenText.substring(0, 15) + '...');
+            });
+        }
+
+        // 2. Text-to-Speech (TTS)
+        function triggerSpeak() {
+            const text = document.getElementById('speakInput').value;
+            if (!text) {
+                showToast('Please enter text to speak');
+                return;
+            }
+            if (window.Android && window.Android.speak) {
+                window.Android.speak(text);
+                showToast('🔊 Speaking aloud via Native TTS...');
+            } else if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'hi-IN';
+                window.speechSynthesis.speak(utterance);
+                showToast('Speaking via Browser Speech API');
+            } else {
+                showToast('Speech not supported on this device');
+            }
+        }
+
+        function presetSpeech(type) {
+            const input = document.getElementById('speakInput');
+            if (type === 1) {
+                input.value = "नमस्ते! ई-फॉर्म-एक्स ऐप में आपका स्वागत है। आपका आवेदन सफलतापूर्वक स्वीकार कर लिया गया है।";
+            } else if (type === 2) {
+                input.value = "📞 एडमिन आपसे तुरंत बात करना चाहते हैं। कृपया ई-फॉर्म-एक्स ऐप की स्क्रीन देखें।";
+            }
+            triggerSpeak();
+        }
+
+        // 3. Location & Tracking
+        function fetchLocation() {
+            const locBox = document.getElementById('locationBox');
+            locBox.innerText = 'Requesting GPS satellite fix...';
+
+            if (window.Android && window.Android.getLocation) {
+                try {
+                    const raw = window.Android.getLocation();
+                    const loc = JSON.parse(raw);
+                    if (loc.error) {
+                        locBox.innerText = 'GPS Error: ' + loc.message + '\nTry clicking "Location Perm" button.';
+                        return;
+                    }
+                    locBox.innerHTML = `📍 <b>Latitude:</b> ${loc.latitude.toFixed(6)}<br>` +
+                                       `📍 <b>Longitude:</b> ${loc.longitude.toFixed(6)}<br>` +
+                                       `🎯 <b>Accuracy:</b> ${loc.accuracy} meters<br>` +
+                                       `⚡ <b>Speed:</b> ${loc.speed} m/s | <b>Tracking:</b> ${loc.is_tracking ? 'Active' : 'Idle'}`;
+                    showToast('GPS fix acquired!');
+                    return;
+                } catch(e) {
+                    locBox.innerText = 'Location Parse Error: ' + e.message;
+                }
+            }
+
+            // HTML5 Fallback
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    pos => {
+                        locBox.innerHTML = `📍 <b>Latitude:</b> ${pos.coords.latitude.toFixed(6)}<br>` +
+                                           `📍 <b>Longitude:</b> ${pos.coords.longitude.toFixed(6)}<br>` +
+                                           `🎯 <b>Accuracy:</b> ${pos.coords.accuracy}m (HTML5 Geolocation)`;
+                        showToast('HTML5 Geolocation acquired!');
+                    },
+                    err => {
+                        locBox.innerText = 'Geolocation Error: ' + err.message;
+                    }
+                );
+            } else {
+                locBox.innerText = 'Geolocation is not supported.';
+            }
+        }
+
+        function requestLocPerm() {
+            if (window.Android && window.Android.openLocationPermission) {
+                window.Android.openLocationPermission();
+                showToast('Requested location permission dialog');
+            } else if (window.Android && window.Android.requestAllPermissions) {
+                window.Android.requestAllPermissions();
+            } else {
+                showToast('Triggering browser geolocation permission...');
+                navigator.geolocation.getCurrentPosition(() => {}, () => {});
+            }
+        }
+
+        function startLocationTracking() {
+            if (window.Android && window.Android.startTracking) {
+                window.Android.startTracking("https://api.eformx.in/?api=location/store");
+                document.getElementById('trackingBadge').innerText = 'Tracking: ACTIVE';
+                document.getElementById('trackingBadge').style.background = '#059669';
+                document.getElementById('trackingBadge').style.color = '#fff';
+                showToast('▶️ 24/7 Background GPS Service Started!');
+            } else {
+                showToast('Background tracking requires eFormX Native Android app');
+            }
+        }
+
+        function stopLocationTracking() {
+            if (window.Android && window.Android.stopTracking) {
+                window.Android.stopTracking();
+                document.getElementById('trackingBadge').innerText = 'Tracking: OFF';
+                document.getElementById('trackingBadge').style.background = '#1E283F';
+                document.getElementById('trackingBadge').style.color = '#94A3B8';
+                showToast('⏹️ Background tracking stopped');
+            } else {
+                showToast('Native bridge not available');
+            }
+        }
+
+        // 4. Native Share
+        function triggerShare() {
+            const text = document.getElementById('shareText').value;
+            if (navigator.share) {
+                navigator.share({
+                    title: 'eFormX Digital Services',
+                    text: text,
+                    url: 'https://eformx.com'
+                }).then(() => showToast('Shared successfully!'))
+                  .catch(e => console.log('Share canceled', e));
+            } else if (window.AndroidShare && window.AndroidShare.share) {
+                window.AndroidShare.share('eFormX Digital Services', text, 'https://eformx.com');
+                showToast('Opening Android Share chooser...');
+            } else {
+                navigator.clipboard.writeText(text);
+                showToast('Copied text to clipboard (Share not supported)');
+            }
+        }
+
+        // 5. File Chooser / Camera Preview
+        function handleFileSelected(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const previewBox = document.getElementById('previewBox');
+                previewBox.innerHTML = `<img src="${e.target.result}" alt="Captured Image">`;
+                showToast('Photo / Document loaded: ' + file.name);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 6. App Lifecycle & Controls
+        function reloadApplication() {
+            if (window.AndroidShare && window.AndroidShare.reloadApp) {
+                window.AndroidShare.reloadApp();
+                showToast('Reloading app and flushing cache...');
+            } else {
+                window.location.reload();
+            }
+        }
+
+        function triggerExitApp() {
+            if (window.Android && window.Android.exitApp) {
+                window.Android.exitApp();
+            } else {
+                if (confirm("Exit eFormX App?")) {
+                    window.close();
+                }
+            }
+        }
+    </script>
+</body>
+</html>

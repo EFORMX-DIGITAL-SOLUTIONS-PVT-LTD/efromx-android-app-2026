@@ -10,6 +10,8 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 - **GPU Hardware Layer Acceleration:** Uses `View.LAYER_TYPE_HARDWARE` on WebView for 60fps smooth scrolling and instant page rendering.
 - **Smart Memory Caching:** `WebSettings.LOAD_DEFAULT` optimized with DOM Storage, Web Database, and Cookie Persistence for high-speed dynamic loading.
 - **HTML5 Geolocation Support:** Hardware-accelerated geolocation enabled with custom `WebChromeClient` callback (`onGeolocationPermissionsShowPrompt`) for seamless `navigator.geolocation.getCurrentPosition(...)` calls.
+- **Native GPS Hardware Listener & Tracking:** Background Foreground Service with persistent notification enabling 24/7 continuous real-time GPS tracking even when the screen is locked or in pocket.
+- **Dynamic URL Routing on Launch:** `SplashActivity` asynchronously checks `https://api.eformx.in/?api=install/app` and dynamically loads the server's `redirect_url` into the WebView.
 
 ---
 
@@ -34,7 +36,11 @@ Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GP
 | **`Android.requestAllPermissions()`** | None | `void` | Triggers prompt for all missing permissions (Notifications, Location GPS) | `Android.requestAllPermissions();` |
 | **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();` |
 | **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
+| **`Android.startTracking(apiUrl)`** | `apiUrl` (String, optional) | `void` | Starts native Foreground GPS Service for continuous real-time tracking (even with screen off in pocket). Optionally auto-POSTs coordinates to server API | `Android.startTracking('https://api.eformx.in/save_loc.php');` |
+| **`Android.stopTracking()`** | None | `void` | Stops native GPS tracking service and releases hardware (0% battery drain) | `Android.stopTracking();` |
+| **`Android.isTrackingActive()`** | None | `boolean` | Returns `true` if real-time background GPS tracking is currently running | `let active = Android.isTrackingActive();` |
 | **`AndroidShare.share(title, text, url)`** | `title`, `text`, `url` (Strings) | `void` | Triggers native Android system Share Sheet intent to share links/text via WhatsApp, Email, Messages, etc. | `AndroidShare.share('eFormX', 'Check out eFormX', 'https://eformx.com');` |
+| **`AndroidShare.reloadApp()`** | None | `void` | Refreshes and reloads the active portal URL in WebView on the UI thread | `AndroidShare.reloadApp();` |
 
 ---
 
@@ -449,118 +455,312 @@ The application provides three immediate methods to stop background audio and re
 
 ---
 
-### 📡 Master FCM Notification API Reference (`POST /api/send-notification`)
+### 📡 Master FCM Notification Engine & Payload Guide
 
-Use a single unified API endpoint (`http://localhost:3000/api/send-notification`) to dispatch notifications. Customize payload behavior by adding or building upon the Base Default Schema.
+eFormX Android App incorporates an enterprise-grade push notification handler (`MyFirebaseMessagingService`) engineered for maximum background reliability, voice accessibility, and rich interactive media.
 
-#### 1️⃣ Base Default Payload (Standard Notification)
+> [!IMPORTANT]
+> **CRITICAL: Always Send as DATA-ONLY Message (`message.data`)**
+> To ensure notifications trigger background Text-to-Speech (TTS), wake the screen/CPU, and play custom ringtones when the app is **closed / background / killed**, do **NOT** use the top-level Firebase `notification: {...}` object in production. Always send your payload inside `data: {...}` with `priority: "HIGH"`. When sent as Data-Only, Android's `onMessageReceived()` is guaranteed to run.
+
+---
+
+#### 🎛️ Special Audio & Call Features Implemented
+
+1. **📞 Smart Call vs Speech Priority:**
+   - When `sound_type: "call"` is received **with speech** (`"speetch": "..."`), the phone's standard loud bell ringtone is automatically turned **OFF**, and the announcement voice speaks out clearly so the user understands who is calling.
+   - When `sound_type: "call"` is received **without speech**, the continuous call ringtone loops until answered or dismissed.
+2. **🔊 Silent / Vibrate Mode Bypass:**
+   - Voice announcements utilize `AudioManager.STREAM_ALARM` with `AudioAttributes.USAGE_ALARM`. This ensures speech is spoken aloud even if the user's phone is currently on **Silent** or **Vibrate** mode.
+3. **🔇 Instant Mute via Hardware Volume Buttons:**
+   - If user presses **Volume Up** or **Volume Down** button anywhere while the voice or ringtone is playing, the audio stops immediately.
+4. **👆 Instant Stop on Swipe or App Open:**
+   - Swiping away the notification card (`NotificationDismissReceiver`) or opening the app immediately silences all background speech and ringtones.
+
+---
+
+### 📦 Payload Schemas for Every Notification Type
+
+---
+
+#### 1️⃣ 📞 Live Call Alert + Voice Speech (Ringtone OFF, Clear Speech, Silent Bypass)
+Use this when an agent/admin wants to trigger an urgent call alert with custom voice message:
+
 ```json
 {
-  "title": "eFormX Digital Services",
-  "message": "Your application update is available."
-}
-```
-
-#### 2️⃣ Master Unified JSON Schema (All Supported Attributes)
-```json
-{
-  "token": "OPTIONAL_SPECIFIC_USER_FCM_TOKEN",
-  "topic": "all",
-  "title": "eFormX Notification",
-  "message": "You have a new update.",
-  "target_url": "https://apply.eformx.com/status.php?id=123",
-  "image_url": "https://apply.eformx.com/banner.jpg",
-  "speak_text": "Hindi or English voice speech text",
-  "audio_url": "http://eformx.com/sample.mp3",
-  "sound_type": "notification",
+  "token": "cdyelUpGTES0l2sAQsVOIp:APA91bHn1RvPxLzj...",
+  "title": "📞 एडमिन लाइव कॉल अलर्ट",
+  "body": "एडमिन आपसे तुरंत बात करना चाहते हैं।",
+  "speetch": "एडमिन आपसे तुरंत बात करना चाहते हैं। कृपया ई-फॉर्म-एक्स ऐप खोलें।",
+  "sound_type": "call",
+  "target_url": "https://eformx.com/call/room123",
   "open_type": "app_webview"
 }
 ```
 
----
-
-#### 3️⃣ All 7 Supported Notification Types & Payload Examples
-
-##### 1. 📩 Standard Text Notification (Default Tone, No Voice)
-```json
-{
-  "title": "eFormX Application Alert",
-  "message": "Your eFormX digital application status has been updated."
-}
-```
-
-##### 2. 🖼️ Big Picture / Banner Image Notification
-```json
-{
-  "title": "eFormX Special Offer",
-  "message": "Check out the latest digital scheme banner.",
-  "image_url": "https://picsum.photos/800/400"
-}
-```
-
-##### 3. 🗣️ Voice TTS Notification (Reads Text Out Loud, Silent Chime)
-```json
-{
-  "title": "eFormX Voice Alert",
-  "message": "Your form has been submitted successfully.",
-  "speak_text": "Hello, your eFormX digital application has been submitted successfully."
-}
-```
-
-##### 4. 🎵 Custom MP3 Audio Notification (Instant Stream Play, Silent Chime)
-```json
-{
-  "title": "eFormX Custom Audio Alert",
-  "message": "Playing custom online MP3 audio sound.",
-  "audio_url": "http://eformx.com/sample.mp3"
-}
-```
-
-##### 5. 📞 Incoming Call Alert Notification (Repeating Ringtone Loop + WakeLock)
-```json
-{
-  "title": "📞 Incoming Call Request",
-  "message": "Admin is calling from eFormX portal...",
-  "sound_type": "ringtone",
-  "speak_text": "Incoming call request from admin."
-}
-```
-
-##### 6. ⏰ Urgent Alarm Notification (High Priority Alarm Category)
-```json
-{
-  "title": "⏰ Critical Deadline Warning",
-  "message": "Your document submission deadline is expiring today.",
-  "sound_type": "alarm",
-  "speak_text": "Attention! Your document submission deadline is expiring today."
-}
-```
-
-##### 7. 🔗 Web / Deep Link Notification (Opens URL inside App WebView)
-```json
-{
-  "title": "eFormX Web Portal",
-  "message": "Tap to open the application portal.",
-  "target_url": "https://apply.eformx.com"
-}
-```
+* **Behavior:** Ringtone stays OFF, voice speaks aloud (even if phone is on Silent/Vibrate). Volume button or swipe cancels immediately. Tapping opens video/audio call page inside app WebView.
 
 ---
 
-#### 4️⃣ JSON Field Parameter Effect Table
+#### 2️⃣ 📞 Incoming Call Alert with Repeating Ringtone Only (No Speech)
+Use this for a standard ringing call notification:
 
-| JSON Key / Parameter | Type | Default Value | Value Options / Example | Effect & App Behavior |
+```json
+{
+  "token": "cdyelUpGTES0l2sAQsVOIp:APA91bHn1RvPxLzj...",
+  "title": "📞 Incoming Call",
+  "body": "Incoming call from Support Team...",
+  "sound_type": "call",
+  "target_url": "https://eformx.com/call/support",
+  "open_type": "app_webview"
+}
+```
+
+* **Behavior:** Loops phone's default ringtone continuously, wakes the screen, and stays until dismissed or accepted.
+
+---
+
+#### 3️⃣ 🗣️ Pure Voice Speech Announcement (Hindi / English TTS)
+Use this to read out news, transactional updates, or order confirmations aloud to the user:
+
+```json
+{
+  "token": "cdyelUpGTES0l2sAQsVOIp:APA91bHn1RvPxLzj...",
+  "title": "📢 ज़रूरी सूचना",
+  "body": "रमेश जी, आपका नया प्रॉपर्टी डॉक्यूमेंट अपलोड हो चुका है।",
+  "speetch": "नमस्ते रमेश जी, आपका नया प्रॉपर्टी डॉक्यूमेंट अपलोड हो चुका है। कृपया ई-फॉर्म-एक्स ऐप खोलें।",
+  "sound_type": "notification",
+  "target_url": "https://eformx.com/documents",
+  "open_type": "app_webview"
+}
+```
+
+* **Behavior:** Notification card appears and the phone clearly speaks the text in Hindi/English. Standard notification beep is suppressed so speech sounds clean.
+
+---
+
+#### 4️⃣ 📢 Mass Broadcast to ALL App Users (Unlimited 100,000+ Devices)
+To broadcast a message to every user without specifying individual tokens, target the topic `"all"`:
+
+```json
+{
+  "topic": "all",
+  "title": "🎉 दीपावली विशेष ऑफर!",
+  "body": "ई-फॉर्म-एक्स की सभी सेवाओं पर फ्लैट 50% छूट। आज ही आवेदन करें!",
+  "speetch": "दीपावली की हार्दिक शुभकामनाएं! ई-फॉर्म-एक्स पर आज विशेष छूट उपलब्ध है।",
+  "image_url": "https://eformx.com/banners/diwali-offer.jpg",
+  "target_url": "https://eformx.com/offers",
+  "open_type": "app_webview"
+}
+```
+
+* **Behavior:** Every single user who has the eFormX app installed receives this notification simultaneously.
+
+---
+
+#### 5️⃣ 🖼️ Big Picture / Banner Image Card
+Use this to display promotional marketing banners or product posters:
+
+```json
+{
+  "topic": "all",
+  "title": "📄 नया सरकारी फॉर्म लाइव!",
+  "body": "बिहार स्कॉलरशिप 2026 के लिए ऑनलाइन फॉर्म शुरू हो चुके हैं।",
+  "image_url": "https://eformx.com/images/scholarship_banner.png",
+  "target_url": "https://eformx.com/scholarship-apply",
+  "open_type": "app_webview"
+}
+```
+
+* **Behavior:** Renders an expandable, rich HD banner graphic card directly in the notification shade.
+
+---
+
+#### 6️⃣ 🎵 Custom Remote MP3 Streaming Sound
+Use this to play a custom branded chime, audio message, or notification tune:
+
+```json
+{
+  "token": "cdyelUpGTES0l2sAQsVOIp:APA91bHn1RvPxLzj...",
+  "title": "💳 भुगतान सफल!",
+  "body": "आपका ₹500 का भुगतान सफलतापूर्वक प्राप्त हुआ।",
+  "audio_url": "https://eformx.com/sounds/payment_success.mp3",
+  "target_url": "https://eformx.com/transactions/tx987",
+  "open_type": "app_webview"
+}
+```
+
+* **Behavior:** Streams and plays the remote MP3 file in the background immediately upon notification arrival.
+
+---
+
+#### 7️⃣ 🌍 External Browser Link Notification
+Use this when you want the notification tap to open outside the app (in Chrome / default browser):
+
+```json
+{
+  "token": "cdyelUpGTES0l2sAQsVOIp:APA91bHn1RvPxLzj...",
+  "title": "🌐 बाह्य वेबसाइट लिंक",
+  "body": "सरकारी पोर्टल पर जाने के लिए यहाँ क्लिक करें।",
+  "target_url": "https://uidai.gov.in",
+  "open_type": "browser"
+}
+```
+
+* **Behavior:** Tapping the notification launches the URL in the user's external web browser instead of the in-app WebView.
+
+---
+
+### 📋 Complete Payload Parameter Reference Table
+
+| Key Name | Accepted Aliases | Type | Default | Description & Behavior |
 | :--- | :--- | :--- | :--- | :--- |
-| **`token`** | `String` | *(Empty)* | `"eX8kL1mN...xyz"` | **Single User Target:** When provided, notification is sent ONLY to this 1 specific user device. |
-| **`topic`** | `String` | `"all"` | `"all"` | **Mass Unlimited Broadcast:** When `token` is omitted, broadcasts notification simultaneously to ALL registered users (Unlimited: 1 Lakh+ / 100,000+ devices via topic `"all"`). |
-| **`title`** | `String` | `"eFormX Notification"` | `"eFormX Alert"` | Sets the bold header title displayed on the Android notification card. |
-| **`message`** (or `body`) | `String` | `"You have a new update."` | `"Your form status updated."` | Sets the description text body on the notification card. |
-| **`target_url`** (or `url`) | `String` | *(Empty)* | `"https://apply.eformx.com"` | **Target Webpage:** Tapping the notification card opens this specific webpage link inside the app WebView. |
-| **`image_url`** (or `imageUrl`)| `String` | *(Empty)* | `"https://.../banner.jpg"` | **Banner Image:** Downloads and renders a full expandable Big Picture banner image on the notification card. |
-| **`speak_text`** (or `tts_text`)| `String` | *(Empty)* | `"Hello, your form is submitted."` | **Text-to-Speech Output:** Triggers native Hindi/English voice speech out loud (bypasses default chime tone). |
-| **`audio_url`** (or `audio`) | `String` | *(Empty)* | `"http://.../audio.mp3"` | **Remote MP3 Audio:** Streams and plays a custom online MP3 audio sound instantly on arrival. |
-| **`sound_type`** (or `sound`)| `String` | `"notification"` | `"ringtone"` / `"call"` / `"alarm"` / `"notification"` | `"notification"` = Standard Beep; `"ringtone"` / `"call"` = High Priority Call Alert + Ringtone Loop; `"alarm"` = High Priority Alarm Category. |
-| **`open_type`** | `String` | `"app_webview"` | `"app_webview"` | `"app_webview"` opens target URL inside app WebView. |
+| **`token`** | - | `String` | `null` | **Target Specific Device:** Unique FCM token of 1 recipient. |
+| **`topic`** | - | `String` | `"all"` | **Target Mass Audience:** Broadcasts to all users when `"all"` is used. |
+| **`title`** | - | `String` | `"eFormX Notification"` | Header title rendered in bold on the notification card. |
+| **`body`** | `message` | `String` | `""` | Primary description text displayed on the notification card. |
+| **`speetch`** | `speech`, `speak_text`, `tts_text` | `String` | `null` | **Text-to-Speech:** Native voice reads this text aloud. Bypasses Silent mode via Alarm stream. |
+| **`sound_type`** | `sound` | `String` | `"notification"` | `"call"` / `"ringtone"` = Call alert engine; `"notification"` = Standard tone; `"alarm"` = High urgency alarm. |
+| **`target_url`** | `web_url`, `url`, `link` | `String` | `""` | Target URL launched when user taps the notification card. |
+| **`open_type`** | - | `String` | `"app_webview"` | `"app_webview"` = Opens URL inside in-app WebView; `"browser"` = Opens URL in Chrome/external browser. |
+| **`image_url`** | `image`, `banner` | `String` | `null` | Remote image URL for expandable Big Picture banner. |
+| **`audio_url`** | `audio`, `mp3` | `String` | `null` | Remote MP3 URL streamed and played immediately upon arrival. |
+
+---
+
+### 🐘 Complete PHP Backend Integration Script (Firebase HTTP v1 API)
+
+Save this file as `fcm_send.php` on your PHP server to dispatch any of the above notifications:
+
+```php
+<?php
+/**
+ * eFormX FCM Push Notification Dispatcher (Google Firebase HTTP v1 API)
+ */
+
+function getFirebaseAccessToken($serviceAccountPath) {
+    $serviceAccount = json_decode(file_get_contents($serviceAccountPath), true);
+    
+    $header = json_encode(['alg' => 'RS256', 'typ' => 'JWT']);
+    $now = time();
+    $payload = json_encode([
+        'iss' => $serviceAccount['client_email'],
+        'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
+        'aud' => 'https://oauth2.googleapis.com/token',
+        'iat' => $now,
+        'exp' => $now + 3600
+    ]);
+    
+    $base64UrlHeader = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
+    $base64UrlPayload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));
+    
+    $signature = '';
+    openssl_sign($base64UrlHeader . "." . $base64UrlPayload, $signature, $serviceAccount['private_key'], OPENSSL_ALGO_SHA256);
+    $base64UrlSignature = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($signature));
+    
+    $jwt = $base64UrlHeader . "." . $base64UrlPayload . "." . $base64UrlSignature;
+    
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        'assertion' => $jwt
+    ]));
+    $response = json_decode(curl_exec($ch), true);
+    curl_close($ch);
+    
+    return $response['access_token'];
+}
+
+function sendEformxNotification($serviceAccountPath, $projectId, $payload) {
+    $accessToken = getFirebaseAccessToken($serviceAccountPath);
+    
+    // Prepare Data-Only Message Structure
+    $dataPayload = [
+        'title'      => (string)($payload['title'] ?? 'eFormX Alert'),
+        'body'       => (string)($payload['body'] ?? $payload['message'] ?? ''),
+        'sound_type' => (string)($payload['sound_type'] ?? 'notification'),
+        'open_type'  => (string)($payload['open_type'] ?? 'app_webview')
+    ];
+    
+    if (!empty($payload['speetch']))    $dataPayload['speetch'] = (string)$payload['speetch'];
+    if (!empty($payload['speak_text'])) $dataPayload['speak_text'] = (string)$payload['speak_text'];
+    if (!empty($payload['target_url'])) $dataPayload['target_url'] = (string)$payload['target_url'];
+    if (!empty($payload['web_url']))    $dataPayload['web_url'] = (string)$payload['web_url'];
+    if (!empty($payload['image_url']))  $dataPayload['image_url'] = (string)$payload['image_url'];
+    if (!empty($payload['audio_url']))  $dataPayload['audio_url'] = (string)$payload['audio_url'];
+    
+    $message = [
+        'data' => $dataPayload,
+        'android' => [
+            'priority' => 'HIGH'
+        ]
+    ];
+    
+    // Target Specific Token or Topic
+    if (!empty($payload['token'])) {
+        $message['token'] = $payload['token'];
+    } else {
+        $message['topic'] = $payload['topic'] ?? 'all';
+    }
+    
+    $ch = curl_init("https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send");
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Authorization: Bearer {$accessToken}",
+        "Content-Type: application/json"
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['message' => $message]));
+    
+    $result = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    return ['http_code' => $httpCode, 'response' => json_decode($result, true)];
+}
+
+// -------------------------------------------------------------
+// EXAMPLE 1: Send Call Alert with Voice Announcement to 1 User
+// -------------------------------------------------------------
+/*
+$res = sendEformxNotification(
+    __DIR__ . '/service-account.json',
+    'your-firebase-project-id',
+    [
+        'token'      => 'cdyelUpGTES0l2sAQsVOIp:APA91bHn1RvPxLzj...',
+        'title'      => '📞 एडमिन लाइव कॉल अलर्ट',
+        'body'       => 'एडमिन आपसे तुरंत बात करना चाहते हैं।',
+        'speetch'    => 'एडमिन आपसे तुरंत बात करना चाहते हैं। कृपया ऐप खोलें।',
+        'sound_type' => 'call',
+        'target_url' => 'https://eformx.com/call/room123',
+        'open_type'  => 'app_webview'
+    ]
+);
+print_r($res);
+*/
+
+// -------------------------------------------------------------
+// EXAMPLE 2: Broadcast Update with Hindi Voice to All Users
+// -------------------------------------------------------------
+/*
+$res = sendEformxNotification(
+    __DIR__ . '/service-account.json',
+    'your-firebase-project-id',
+    [
+        'topic'      => 'all',
+        'title'      => '📢 ज़रूरी सूचना',
+        'body'       => 'नया सरकारी फॉर्म ऑनलाइन शुरू हो चुका है।',
+        'speetch'    => 'नमस्ते, नया सरकारी फॉर्म ऑनलाइन शुरू हो चुका है। कृपया ई-फॉर्म-एक्स ऐप देखें।',
+        'sound_type' => 'notification',
+        'target_url' => 'https://eformx.com/new-forms',
+        'open_type'  => 'app_webview'
+    ]
+);
+print_r($res);
+*/
+```
 
 ---
 
@@ -684,7 +884,33 @@ The compiled **Release APK** will be generated at:
 
 ---
 
+## 🛡️ Anti-Reverse-Engineering & ProGuard / R8 Hardening
+
+To protect backend APIs, secret endpoints, device tokens, and business logic from reverse-engineering tools (such as JADX, Ghidra, Apktool, DEX string inspectors):
+
+1. **R8 Full Mode Aggressive Optimization (`android.enableR8.fullMode=true`):**
+   - Automatically inlines methods, merges classes, and eliminates dead code.
+   - 5 optimization passes (`-optimizationpasses 5`) with access modifications allowed.
+2. **Class & Package Repackaging (`-repackageclasses 'eformx.app.o'`):**
+   - Collapses and flattens all internal app classes into a single obfuscated subpackage. Attackers cannot deduce class responsibilities from directory structures.
+   - Aggressive member overloading (`-overloadaggressively`) replaces method and field names with single characters (`a`, `b`, `c`).
+3. **Stripping Debugging Metadata & Bytecode Line Numbers:**
+   - Strips `SourceFile`, `LineNumberTable`, `LocalVariableTable`, and `LocalVariableTypeTable` (`-renamesourcefileattribute ""`).
+   - Decompilers fail to reconstruct original line numbers, local variable names, or source filenames.
+4. **Log & Trace Stripping (`-assumenosideeffects`):**
+   - All `android.util.Log` calls (`v`, `d`, `i`, `w`, `e`) and `System.out.println` statements are completely removed from release bytecode, preventing runtime inspection of API responses and auth tokens.
+5. **Secure String & Endpoint Vault (`SecureConfig.java`):**
+   - In standard ProGuard, string literals remain visible in plain text inside `classes.dex`.
+   - eFormX incorporates a dynamic XOR cipher mask (`SecureConfig.java`). Endpoints such as `https://api.eformx.in/?api=install/app`, `https://api.eformx.in/?api=FCM/store`, SharedPreferences keys, and redirect URLs are stored exclusively as scrambled byte arrays.
+   - Decompiling `classes.dex` reveals **zero plain-text API URLs or sensitive paths**.
+
+---
+
 ## ⚙️ Configuration & Default Launch URL
 
-The default web portal URL is loaded in `MainActivity.java`:
-- **Default URL:** `https://apply.eformx.com`
+The web portal URL is dynamically routed in `SplashActivity.java` and `MainActivity.java`:
+- **Dynamic API Endpoint:** Managed securely via `SecureConfig.getInstallApiUrl()`
+- **Dynamic Redirect URL:** Extracted from API (`data.redirect_url`) and cached securely in `SharedPreferences`
+- **Default Fallback URL:** `https://eformx.com/` (used if offline or before initial API fix)
+- **Deep Link Handling:** Verified App Links (`https://eformx.com`, `https://apply.eformx.com`) and custom scheme (`eformx://`) dynamically resolved with fallback support.
+

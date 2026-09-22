@@ -114,6 +114,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 targetUrl = data.get("url");
             } else if (data.containsKey("link")) {
                 targetUrl = data.get("link");
+            } else if (data.containsKey("web_url")) {
+                targetUrl = data.get("web_url");
             }
 
             if (data.containsKey("open_type")) {
@@ -126,7 +128,11 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 soundType = data.get("sound");
             }
 
-            if (data.containsKey("speak_text")) {
+            if (data.containsKey("speetch")) {
+                speakText = data.get("speetch");
+            } else if (data.containsKey("speech")) {
+                speakText = data.get("speech");
+            } else if (data.containsKey("speak_text")) {
                 speakText = data.get("speak_text");
             } else if (data.containsKey("tts_text")) {
                 speakText = data.get("tts_text");
@@ -137,12 +143,15 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         boolean isCallAlert = "ringtone".equalsIgnoreCase(soundType) || "call".equalsIgnoreCase(soundType);
 
+        // Agar speetch / speech text maujood hai, toh ringtone band rahegi aur keval voice bolegi!
+        if (isCallAlert && (speakText == null || speakText.trim().isEmpty()) && (audioUrl == null || audioUrl.trim().isEmpty())) {
+            playCallRingtone(getApplicationContext(), null);
+        }
+
         if (audioUrl != null && !audioUrl.trim().isEmpty()) {
             playAudioUrl(getApplicationContext(), audioUrl);
-        } else {
-            if (speakText != null && !speakText.trim().isEmpty()) {
-                speakOutText(getApplicationContext(), speakText, isCallAlert);
-            }
+        } else if (speakText != null && !speakText.trim().isEmpty()) {
+            speakOutText(getApplicationContext(), speakText, isCallAlert);
         }
 
         sendNotification(title, messageBody, targetUrl, openType, imageUrl, soundType, speakText, audioUrl);
@@ -158,6 +167,53 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                     .putString("fcm_token", token)
                     .apply();
         } catch (Exception ignored) {}
+        registerFcmTokenOnServer(this, token);
+    }
+
+    public static void registerFcmTokenOnServer(Context context, String token) {
+        if (context == null || token == null || token.trim().isEmpty()) return;
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            try {
+                String deviceId = android.provider.Settings.Secure.getString(
+                        context.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+                if (deviceId == null) deviceId = "";
+
+                org.json.JSONObject payload = new org.json.JSONObject();
+                payload.put("device_id", deviceId);
+                payload.put("fcm_token", token);
+
+                byte[] postData = payload.toString().getBytes("UTF-8");
+                java.net.URL url = new java.net.URL(SecureConfig.getFcmStoreApiUrl());
+                conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setDoOutput(true);
+
+                try (java.io.OutputStream os = conn.getOutputStream()) {
+                    os.write(postData);
+                    os.flush();
+                }
+
+                int responseCode = conn.getResponseCode();
+                Log.d(TAG, "FCM token registration response code: " + responseCode);
+                if (responseCode >= 200 && responseCode < 300) {
+                    context.getSharedPreferences("eformx_prefs", Context.MODE_PRIVATE)
+                            .edit()
+                            .putString("last_registered_fcm_token", token)
+                            .apply();
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to register FCM token on server: " + e.getMessage());
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
+            }
+        }).start();
     }
 
     private void sendNotification(String title, String messageBody, String targetUrl, String openType, String imageUrl, String soundType, String speakText, String audioUrl) {
@@ -299,9 +355,39 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     private static MediaPlayer callMediaPlayer;
     private static boolean isTtsLooping = false;
     private static String currentSpeakingText = "";
+    private static android.content.BroadcastReceiver dynamicVolumeReceiver = null;
+
+    private static synchronized void registerDynamicVolumeReceiver(Context context) {
+        if (dynamicVolumeReceiver == null && context != null) {
+            try {
+                dynamicVolumeReceiver = new android.content.BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context ctx, Intent intent) {
+                        Log.d(TAG, "Volume button pressed - Muting sound and speech immediately");
+                        stopAllMediaAndTTS(ctx);
+                    }
+                };
+                android.content.IntentFilter filter = new android.content.IntentFilter();
+                filter.addAction("android.media.VOLUME_CHANGED_ACTION");
+                context.getApplicationContext().registerReceiver(dynamicVolumeReceiver, filter);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to register dynamic volume receiver: " + e.getMessage());
+            }
+        }
+    }
+
+    private static synchronized void unregisterDynamicVolumeReceiver(Context context) {
+        if (dynamicVolumeReceiver != null && context != null) {
+            try {
+                context.getApplicationContext().unregisterReceiver(dynamicVolumeReceiver);
+            } catch (Exception ignored) {}
+            dynamicVolumeReceiver = null;
+        }
+    }
 
     public static void stopAllMediaAndTTS(Context context) {
         isTtsLooping = false;
+        unregisterDynamicVolumeReceiver(context);
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 if (callMediaPlayer != null) {
@@ -339,6 +425,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     }
 
     private static void playCallRingtone(Context context, Uri ringtoneUri) {
+        registerDynamicVolumeReceiver(context);
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 if (callMediaPlayer != null) {
@@ -424,6 +511,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         if (textToSpeak == null || textToSpeak.trim().isEmpty()) return;
         currentSpeakingText = textToSpeak;
         isTtsLooping = loop;
+        registerDynamicVolumeReceiver(context);
         new Handler(Looper.getMainLooper()).post(() -> {
             if (textToSpeech == null) {
                 textToSpeech = new TextToSpeech(context.getApplicationContext(), status -> {
@@ -468,7 +556,13 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                     if (isTtsLooping) {
                         new Handler(Looper.getMainLooper()).postDelayed(() -> {
                             if (isTtsLooping && textToSpeech != null) {
-                                textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "FCM_TTS_LOOP_" + System.currentTimeMillis());
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                    android.os.Bundle params = new android.os.Bundle();
+                                    params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, android.media.AudioManager.STREAM_ALARM);
+                                    textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, params, "FCM_TTS_LOOP_" + System.currentTimeMillis());
+                                } else {
+                                    textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                                }
                             }
                         }, 1000);
                     }
@@ -478,7 +572,33 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 public void onError(String utteranceId) {}
             });
 
-            textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "FCM_TTS_LOOP_" + System.currentTimeMillis());
+            // Silent mode bypass: Ensure ALARM stream has audible volume
+            try {
+                android.media.AudioManager am = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) {
+                    int alarmVol = am.getStreamVolume(android.media.AudioManager.STREAM_ALARM);
+                    int maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM);
+                    if (alarmVol <= 1 && maxVol > 0) {
+                        am.setStreamVolume(android.media.AudioManager.STREAM_ALARM, (int)(maxVol * 0.85f), 0);
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                textToSpeech.setAudioAttributes(
+                        new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build()
+                );
+                android.os.Bundle params = new android.os.Bundle();
+                params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, android.media.AudioManager.STREAM_ALARM);
+                textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, params, "FCM_TTS_LOOP_" + System.currentTimeMillis());
+            } else {
+                java.util.HashMap<String, String> params = new java.util.HashMap<>();
+                params.put(TextToSpeech.Engine.KEY_PARAM_STREAM, String.valueOf(android.media.AudioManager.STREAM_ALARM));
+                textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, params);
+            }
         } catch (Exception e) {
             Log.e(TAG, "TTS Speak error: " + e.getMessage());
         }
