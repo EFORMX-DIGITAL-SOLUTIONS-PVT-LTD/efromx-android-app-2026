@@ -48,7 +48,6 @@
 -keep public class eformx.app.SplashActivity extends android.app.Activity
 -keep public class eformx.app.MainActivity extends android.app.Activity
 -keep public class eformx.app.MyFirebaseMessagingService extends com.google.firebase.messaging.FirebaseMessagingService
--keep public class eformx.app.LocationTrackingService extends android.app.Service
 -keep public class eformx.app.NotificationDismissReceiver extends android.content.BroadcastReceiver
 -keep public class eformx.app.VolumeButtonReceiver extends android.content.BroadcastReceiver
 

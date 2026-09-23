@@ -2,21 +2,28 @@ package eformx.app;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Looper;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
+import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 import com.google.android.gms.tasks.Task;
@@ -39,10 +46,38 @@ public class AndroidBridge {
     private final Activity activity;
     private final ActivityResultLauncher<String[]> locationPermissionLauncher;
     private TextToSpeech textToSpeech;
+    private Location latestBridgeLocation = null;
 
     public AndroidBridge(Activity activity, ActivityResultLauncher<String[]> locationPermissionLauncher) {
         this.activity = activity;
         this.locationPermissionLauncher = locationPermissionLauncher;
+        initLocationListener();
+    }
+
+    public void initLocationListener() {
+        if (activity == null) return;
+        try {
+            if (hasLocationPermission()) {
+                LocationManager lm = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    LocationListener listener = new LocationListener() {
+                        @Override
+                        public void onLocationChanged(Location loc) {
+                            if (loc != null) latestBridgeLocation = loc;
+                        }
+                        @Override public void onStatusChanged(String s, int i, Bundle b) {}
+                        @Override public void onProviderEnabled(String s) {}
+                        @Override public void onProviderDisabled(String s) {}
+                    };
+                    if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                        lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 0f, listener, Looper.getMainLooper());
+                    }
+                    if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                        lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2000L, 0f, listener, Looper.getMainLooper());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     @JavascriptInterface
@@ -77,6 +112,16 @@ public class AndroidBridge {
     }
 
     @JavascriptInterface
+    public void openLocationSettings() {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            try {
+                activity.startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+            } catch (Exception ignored) {}
+        });
+    }
+
+    @JavascriptInterface
     public boolean hasLocationPermission() {
         if (activity == null) return false;
         return ContextCompat.checkSelfPermission(activity, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -86,10 +131,32 @@ public class AndroidBridge {
     @JavascriptInterface
     public boolean hasNotificationPermission() {
         if (activity == null) return true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return ContextCompat.checkSelfPermission(activity, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
-        }
-        return true;
+        return NotificationManagerCompat.from(activity).areNotificationsEnabled();
+    }
+
+    @JavascriptInterface
+    public void openNotificationPermission() {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).requestNotificationPermissionExplicit();
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void requestNotificationPermission() {
+        openNotificationPermission();
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettings() {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).openNotificationSettings();
+            }
+        });
     }
 
     @JavascriptInterface
@@ -196,9 +263,9 @@ public class AndroidBridge {
         if (activity == null) return "";
         try {
             PackageInfo pInfo = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-            return pInfo.versionName != null ? pInfo.versionName : "1.4";
+            return pInfo.versionName != null ? pInfo.versionName : "1.5";
         } catch (Exception e) {
-            return "1.4";
+            return "1.5";
         }
     }
 
@@ -276,44 +343,20 @@ public class AndroidBridge {
     }
 
     @JavascriptInterface
-    public void startTracking(String apiUrl) {
-        if (activity == null) return;
-        activity.runOnUiThread(() -> {
-            if (!hasLocationPermission()) {
-                openLocationPermission();
-                return;
-            }
-            android.content.Intent serviceIntent = new android.content.Intent(activity, LocationTrackingService.class);
-            serviceIntent.setAction(LocationTrackingService.ACTION_START_TRACKING);
-            if (apiUrl != null && !apiUrl.trim().isEmpty()) {
-                serviceIntent.putExtra(LocationTrackingService.EXTRA_API_URL, apiUrl.trim());
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                activity.startForegroundService(serviceIntent);
-            } else {
-                activity.startService(serviceIntent);
-            }
-        });
-    }
-
-    @JavascriptInterface
-    public void startTracking() {
-        startTracking(null);
-    }
-
-    @JavascriptInterface
-    public void stopTracking() {
-        if (activity == null) return;
-        activity.runOnUiThread(() -> {
-            android.content.Intent serviceIntent = new android.content.Intent(activity, LocationTrackingService.class);
-            serviceIntent.setAction(LocationTrackingService.ACTION_STOP_TRACKING);
-            activity.startService(serviceIntent);
-        });
-    }
-
-    @JavascriptInterface
-    public boolean isTrackingActive() {
-        return LocationTrackingService.isTrackingActive();
+    private String buildLocationJson(Location loc) {
+        try {
+            JSONObject json = new JSONObject();
+            json.put("latitude", loc.getLatitude());
+            json.put("longitude", loc.getLongitude());
+            json.put("accuracy", loc.getAccuracy());
+            json.put("altitude", loc.getAltitude());
+            json.put("speed", loc.getSpeed());
+            json.put("time", loc.getTime());
+            json.put("error", false);
+            return json.toString();
+        } catch (Exception e) {
+            return "{\"error\":true,\"message\":\"" + e.getMessage() + "\"}";
+        }
     }
 
     @JavascriptInterface
@@ -322,35 +365,35 @@ public class AndroidBridge {
         try {
             if (ContextCompat.checkSelfPermission(activity, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(activity, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                return "{\"error\":true,\"message\":\"Permission not granted\"}";
-            }
-
-            // Prioritize fresh satellite fix from active Native GPS Listener
-            Location liveLoc = LocationTrackingService.getLatestLocation();
-            if (liveLoc != null) {
-                JSONObject json = new JSONObject();
-                json.put("latitude", liveLoc.getLatitude());
-                json.put("longitude", liveLoc.getLongitude());
-                json.put("accuracy", liveLoc.getAccuracy());
-                json.put("altitude", liveLoc.getAltitude());
-                json.put("speed", liveLoc.getSpeed());
-                json.put("time", liveLoc.getTime());
-                json.put("is_tracking", LocationTrackingService.isTrackingActive());
-                json.put("error", false);
-                return json.toString();
+                openLocationPermission();
+                return "{\"error\":true,\"message\":\"Location permission required. Please grant permission.\"}";
             }
 
             LocationManager lm = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
             if (lm == null) return "{\"error\":true,\"message\":\"LocationManager null\"}";
 
-            Location gpsLoc = null;
-            Location netLoc = null;
-
-            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                gpsLoc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            boolean gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER);
+            boolean netEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            if (!gpsEnabled && !netEnabled) {
+                activity.runOnUiThread(() -> {
+                    Toast.makeText(activity, "कृपया फोन की लोकेशन (GPS) ऑन करें", Toast.LENGTH_LONG).show();
+                    openLocationSettings();
+                });
+                return "{\"error\":true,\"message\":\"Device GPS is turned OFF in phone settings\"}";
             }
 
-            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            // 1. Fix from active bridge listener
+            if (latestBridgeLocation != null) {
+                return buildLocationJson(latestBridgeLocation);
+            }
+
+            // 3. Cached last known location
+            Location gpsLoc = null;
+            Location netLoc = null;
+            if (gpsEnabled) {
+                gpsLoc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            }
+            if (netEnabled) {
                 netLoc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             }
 
@@ -360,19 +403,32 @@ public class AndroidBridge {
             }
 
             if (bestLoc != null) {
-                JSONObject json = new JSONObject();
-                json.put("latitude", bestLoc.getLatitude());
-                json.put("longitude", bestLoc.getLongitude());
-                json.put("accuracy", bestLoc.getAccuracy());
-                json.put("altitude", bestLoc.getAltitude());
-                json.put("speed", bestLoc.getSpeed());
-                json.put("time", bestLoc.getTime());
-                json.put("is_tracking", LocationTrackingService.isTrackingActive());
-                json.put("error", false);
-                return json.toString();
-            } else {
-                return "{\"error\":true,\"message\":\"No location fix available\"}";
+                latestBridgeLocation = bestLoc;
+                return buildLocationJson(bestLoc);
             }
+
+            // 4. Trigger active single / continuous fix on main thread
+            activity.runOnUiThread(() -> {
+                try {
+                    LocationListener quickListener = new LocationListener() {
+                        @Override
+                        public void onLocationChanged(Location loc) {
+                            if (loc != null) latestBridgeLocation = loc;
+                        }
+                        @Override public void onStatusChanged(String s, int i, Bundle b) {}
+                        @Override public void onProviderEnabled(String s) {}
+                        @Override public void onProviderDisabled(String s) {}
+                    };
+                    if (gpsEnabled) {
+                        lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, quickListener, Looper.getMainLooper());
+                    }
+                    if (netEnabled) {
+                        lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, quickListener, Looper.getMainLooper());
+                    }
+                } catch (Exception ignored) {}
+            });
+
+            return "{\"error\":true,\"message\":\"Acquiring satellite fix... Please tap again in 2 seconds.\"}";
 
         } catch (Exception e) {
             return "{\"error\":true,\"message\":\"" + e.getMessage() + "\"}";

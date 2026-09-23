@@ -10,7 +10,7 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 - **GPU Hardware Layer Acceleration:** Uses `View.LAYER_TYPE_HARDWARE` on WebView for 60fps smooth scrolling and instant page rendering.
 - **Smart Memory Caching:** `WebSettings.LOAD_DEFAULT` optimized with DOM Storage, Web Database, and Cookie Persistence for high-speed dynamic loading.
 - **HTML5 Geolocation Support:** Hardware-accelerated geolocation enabled with custom `WebChromeClient` callback (`onGeolocationPermissionsShowPrompt`) for seamless `navigator.geolocation.getCurrentPosition(...)` calls.
-- **Native GPS Hardware Listener & Tracking:** Background Foreground Service with persistent notification enabling 24/7 continuous real-time GPS tracking even when the screen is locked or in pocket.
+- **Native GPS Hardware Location Provider:** Direct native satellite fix (`ACCESS_FINE_LOCATION`) query to fetch high-precision coordinates instantly for web forms and maps.
 - **Dynamic URL Routing on Launch:** `SplashActivity` asynchronously checks `https://api.eformx.in/?api=install/app` and dynamically loads the server's `redirect_url` into the WebView.
 
 ---
@@ -18,29 +18,28 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 ### 📱 Android JavaScript Interface (`AndroidBridge`)
 Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GPS coordinates, device info, device ID, app version, package name, network status, trigger Text-To-Speech output, and request location permissions:
 
-| Method | Parameters | Return Type | Description | JavaScript Usage Example |
-| :--- | :--- | :--- | :--- | :--- |
-| **`Android.getFcmToken()`** | None | `String` | Returns device's Firebase Push Notification Registration Token string | `let token = Android.getFcmToken();` |
-| **`Android.getLocation()`** | None | `String` (JSON) | Returns GPS Latitude, Longitude, Accuracy, Altitude, Speed, Time JSON | `let loc = JSON.parse(Android.getLocation());` |
-| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Brand, Model, Device, Product, OS Version, SDK Level, Language, Country, TimeZone, Screen Dimensions, App Version, Package Name, FCM Token) | `let info = JSON.parse(Android.getDeviceInfo());` |
-| **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();` |
-| **`Android.getAppVersion()`** | None | `String` | Returns App Version Name (e.g. `"1.4"`) | `let ver = Android.getAppVersion();` |
-| **`Android.getPackageName()`** | None | `String` | Returns Package Identifier (`"eformx.app"`) | `let pkg = Android.getPackageName();` |
-| **`Android.getIpAddress()`** | None | `String` | Returns device local IPv4 address string (e.g. `"192.168.1.35"`) | `let ip = Android.getIpAddress();` |
-| **`Android.getNetworkType()`** | None | `String` | Returns network type (`"WIFI"`, `"CELLULAR_MOBILE"`, `"OFFLINE"`) | `let netType = Android.getNetworkType();` |
-| **`Android.getNetworkOperator()`** | None | `String` | Returns SIM carrier operator name (e.g. `"Jio"`, `"Airtel"`) | `let op = Android.getNetworkOperator();` |
-| **`Android.isNetworkAvailable()`** | None | `boolean` | Returns active internet connection state (`true`/`false`) | `let online = Android.isNetworkAvailable();` |
-| **`Android.speak(text)`** | `text` (String) | `void` | Speaks text using native Android Text-to-Speech engine | `Android.speak('Hello from eFormX');` |
-| **`Android.hasLocationPermission()`** | None | `boolean` | Checks if Location permission (`ACCESS_FINE_LOCATION`) is granted | `let hasLoc = Android.hasLocationPermission();` |
-| **`Android.hasNotificationPermission()`** | None | `boolean` | Checks if Notification permission (`POST_NOTIFICATIONS`) is granted | `let hasNotify = Android.hasNotificationPermission();` |
-| **`Android.requestAllPermissions()`** | None | `void` | Triggers prompt for all missing permissions (Notifications, Location GPS) | `Android.requestAllPermissions();` |
-| **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();` |
-| **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();` |
-| **`Android.startTracking(apiUrl)`** | `apiUrl` (String, optional) | `void` | Starts native Foreground GPS Service for continuous real-time tracking (even with screen off in pocket). Optionally auto-POSTs coordinates to server API | `Android.startTracking('https://api.eformx.in/save_loc.php');` |
-| **`Android.stopTracking()`** | None | `void` | Stops native GPS tracking service and releases hardware (0% battery drain) | `Android.stopTracking();` |
-| **`Android.isTrackingActive()`** | None | `boolean` | Returns `true` if real-time background GPS tracking is currently running | `let active = Android.isTrackingActive();` |
+| Method | Parameters | Return Type | Description | JavaScript Usage Examp<br/>+le                                            |
+| :--- | :--- | :--- | :--- |:--------------------------------------------------------------------------|
+| **`Android.getFcmToken()`** | None | `String` | Returns device's Firebase Push Notification Registration Token string | `let token = Android.getFcmToken();`                                      |
+| **`Android.getLocation()`** | None | `String` (JSON) | Returns GPS Latitude, Longitude, Accuracy, Altitude, Speed, Time JSON | `let loc = JSON.parse(Android.getLocation());`                            |
+| **`Android.getDeviceInfo()`** | None | `String` (JSON) | Returns JSON string with hardware specs (Android ID, Manufacturer, Brand, Model, Device, Product, OS Version, SDK Level, Language, Country, TimeZone, Screen Dimensions, App Version, Package Name, FCM Token) | `let info = JSON.parse(Android.getDeviceInfo());`                         |
+| **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();`                                         |
+| **`Android.getAppVersion()`** | None | `String` | Returns App Version Name (e.g. `"1.5"`) | `let ver = Android.getAppVersion();`                                      |
+| **`Android.getPackageName()`** | None | `String` | Returns Package Identifier (`"eformx.app"`) | `let pkg = Android.getPackageName();`                                     |
+| **`Android.getIpAddress()`** | None | `String` | Returns device local IPv4 address string (e.g. `"192.168.1.35"`) | `let ip = Android.getIpAddress();`                                        |
+| **`Android.getNetworkType()`** | None | `String` | Returns network type (`"WIFI"`, `"CELLULAR_MOBILE"`, `"OFFLINE"`) | `let netType = Android.getNetworkType();`                                 |
+| **`Android.getNetworkOperator()`** | None | `String` | Returns SIM carrier operator name (e.g. `"Jio"`, `"Airtel"`) | `let op = Android.getNetworkOperator();`                                  |
+| **`Android.isNetworkAvailable()`** | None | `boolean` | Returns active internet connection state (`true`/`false`) | `let online = Android.isNetworkAvailable();`                              |
+| **`Android.speak(text)`** | `text` (String) | `void` | Speaks text using native Android Text-to-Speech engine | `Android.speak('Hello from eFormX');`                                     |
+| **`Android.hasLocationPermission()`** | None | `boolean` | Checks if Location permission (`ACCESS_FINE_LOCATION`) is granted | `let hasLoc = Android.hasLocationPermission();`                           |
+| **`Android.hasNotificationPermission()`** | None | `boolean` | Checks if Notification permission (`POST_NOTIFICATIONS` / app notification setting) is enabled | `let hasNotify = Android.hasNotificationPermission();`                    |
+| **`Android.openNotificationPermission()`** | None | `void` | Prompts native system notification permission dialog (or opens App Notification Settings if denied) | `Android.openNotificationPermission();`                                   |
+| **`Android.openNotificationSettings()`** | None | `void` | Directly opens system App Notification Settings page | `Android.openNotificationSettings();`                                     |
+| **`Android.requestAllPermissions()`** | None | `void` | Triggers prompt for all missing permissions (Notifications, Location GPS) | `Android.requestAllPermissions();`                                        |
+| **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();`                                                      |
+| **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();`                                       |
 | **`AndroidShare.share(title, text, url)`** | `title`, `text`, `url` (Strings) | `void` | Triggers native Android system Share Sheet intent to share links/text via WhatsApp, Email, Messages, etc. | `AndroidShare.share('eFormX', 'Check out eFormX', 'https://eformx.com');` |
-| **`AndroidShare.reloadApp()`** | None | `void` | Refreshes and reloads the active portal URL in WebView on the UI thread | `AndroidShare.reloadApp();` |
+| **`AndroidShare.reloadApp()`** | None | `void` | Refreshes and reloads the active portal URL in WebView on the UI thread | `AndroidShare.reloadApp();`                                               |
 
 ---
 

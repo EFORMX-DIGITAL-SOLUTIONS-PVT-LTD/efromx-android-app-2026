@@ -11,6 +11,7 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -21,7 +22,13 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.provider.Settings;
+import android.net.Uri;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 public class SplashActivity extends Activity {
@@ -102,16 +109,22 @@ public class SplashActivity extends Activity {
     }
 
     private void showBrandingSplashScreen() {
-        int themeColor = Color.parseColor("#F4F8FF");
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-        getWindow().setStatusBarColor(themeColor);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        }
 
         WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         if (insetsController != null) {
+            insetsController.show(WindowInsetsCompat.Type.statusBars());
             insetsController.setAppearanceLightStatusBars(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                insetsController.setAppearanceLightNavigationBars(true);
+            }
         }
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
 
         splashRootLayout = new FrameLayout(this);
         splashRootLayout.setBackgroundColor(Color.parseColor("#F4F8FF"));
@@ -247,16 +260,18 @@ public class SplashActivity extends Activity {
     }
 
     private void setupOnboardingUi() {
-        int themeColor = Color.parseColor("#F4F8FF");
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-        getWindow().setStatusBarColor(themeColor);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
 
         WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         if (insetsController != null) {
+            insetsController.show(WindowInsetsCompat.Type.statusBars());
             insetsController.setAppearanceLightStatusBars(true);
+            insetsController.setAppearanceLightNavigationBars(false);
         }
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
         FrameLayout rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(Color.parseColor("#F4F8FF"));
@@ -266,19 +281,18 @@ public class SplashActivity extends Activity {
         rootLayout.addView(ambientBgView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 2. Bottom Decorative Wavy Curve View (Bold Prominent Height: 210dp)
+        // 2. Bottom Decorative Wavy Curve View
         BottomWaveView waveView = new BottomWaveView(this);
         FrameLayout.LayoutParams waveParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(210));
+                ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(220));
         waveParams.gravity = Gravity.BOTTOM;
         rootLayout.addView(waveView, waveParams);
 
         LinearLayout contentLayout = new LinearLayout(this);
         contentLayout.setOrientation(LinearLayout.VERTICAL);
         contentLayout.setGravity(Gravity.CENTER_HORIZONTAL);
-        contentLayout.setPadding(0, dpToPx(36), 0, 0);
 
-        // Center HorizontalScrollView Area for 3 Slides
+        // Center HorizontalScrollView Area for 4 Slides
         scrollView = new HorizontalScrollView(this);
         scrollView.setHorizontalScrollBarEnabled(false);
         scrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -299,7 +313,7 @@ public class SplashActivity extends Activity {
         LinearLayout bottomLayout = new LinearLayout(this);
         bottomLayout.setOrientation(LinearLayout.VERTICAL);
         bottomLayout.setGravity(Gravity.CENTER);
-        bottomLayout.setPadding(0, 0, 0, dpToPx(24));
+        bottomLayout.setPadding(0, 0, 0, 0);
 
         // Prominent Dot Indicators
         dotsLayout = new LinearLayout(this);
@@ -307,11 +321,11 @@ public class SplashActivity extends Activity {
         dotsLayout.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams dotsParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        dotsParams.bottomMargin = dpToPx(14);
+        dotsParams.bottomMargin = dpToPx(12);
 
         // Progress Ring & Floating Button Container
         FrameLayout progressButtonWrapper = new FrameLayout(this);
-        int wrapperSize = dpToPx(84);
+        int wrapperSize = dpToPx(80);
         LinearLayout.LayoutParams wrapperParams = new LinearLayout.LayoutParams(wrapperSize, wrapperSize);
         wrapperParams.gravity = Gravity.CENTER;
 
@@ -321,22 +335,22 @@ public class SplashActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         progressButtonWrapper.addView(progressRingView, ringParams);
 
-        // Inner Circular Blue Arrow Button (64dp size)
+        // Inner Circular White Arrow Button (60dp size)
         FrameLayout nextBtnContainer = new FrameLayout(this);
-        int innerBtnSize = dpToPx(64);
+        int innerBtnSize = dpToPx(60);
         FrameLayout.LayoutParams innerBtnParams = new FrameLayout.LayoutParams(innerBtnSize, innerBtnSize);
         innerBtnParams.gravity = Gravity.CENTER;
 
         GradientDrawable nextBtnBg = new GradientDrawable();
         nextBtnBg.setShape(GradientDrawable.OVAL);
-        nextBtnBg.setColor(Color.parseColor("#0052FF"));
+        nextBtnBg.setColor(Color.WHITE);
         nextBtnContainer.setBackground(nextBtnBg);
         nextBtnContainer.setElevation(dpToPx(8));
 
         TextView nextArrow = new TextView(this);
         nextArrow.setText("➔");
         nextArrow.setTextSize(26);
-        nextArrow.setTextColor(Color.WHITE);
+        nextArrow.setTextColor(Color.parseColor("#0052FF"));
         nextArrow.setTypeface(Typeface.DEFAULT_BOLD);
         nextArrow.setGravity(Gravity.CENTER);
         nextBtnContainer.addView(nextArrow, new FrameLayout.LayoutParams(
@@ -353,6 +367,20 @@ public class SplashActivity extends Activity {
 
         rootLayout.addView(contentLayout, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout, (v, windowInsets) -> {
+            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            int topPad = Math.max(insets.top, dpToPx(24)) + dpToPx(6);
+            int bottomPad = Math.max(insets.bottom, dpToPx(16)) + dpToPx(12);
+            contentLayout.setPadding(0, topPad, 0, bottomPad);
+
+            FrameLayout.LayoutParams waveLp = (FrameLayout.LayoutParams) waveView.getLayoutParams();
+            if (waveLp != null) {
+                waveLp.height = bottomPad + dpToPx(180);
+                waveView.setLayoutParams(waveLp);
+            }
+            return windowInsets;
+        });
 
         setContentView(rootLayout);
 
@@ -458,11 +486,11 @@ public class SplashActivity extends Activity {
         LinearLayout logoHeader = new LinearLayout(this);
         logoHeader.setOrientation(LinearLayout.VERTICAL);
         logoHeader.setGravity(Gravity.CENTER);
-        logoHeader.setPadding(0, 0, 0, dpToPx(8));
+        logoHeader.setPadding(0, 0, 0, dpToPx(4));
 
         TextView logoTitleTv = new TextView(this);
         logoTitleTv.setText("EX EFORMX");
-        logoTitleTv.setTextSize(24);
+        logoTitleTv.setTextSize(22);
         logoTitleTv.setTextColor(Color.parseColor("#0052FF"));
         logoTitleTv.setTypeface(Typeface.DEFAULT_BOLD);
         logoTitleTv.setGravity(Gravity.CENTER);
@@ -506,14 +534,14 @@ public class SplashActivity extends Activity {
         // 2. Main Title (Navy & Orange)
         TextView titleNavyTv = new TextView(this);
         titleNavyTv.setText(slideTitles[index][0]);
-        titleNavyTv.setTextSize(20);
+        titleNavyTv.setTextSize(18);
         titleNavyTv.setTextColor(Color.parseColor("#0D1B2A"));
         titleNavyTv.setTypeface(Typeface.DEFAULT_BOLD);
         titleNavyTv.setGravity(Gravity.CENTER);
 
         TextView titleOrangeTv = new TextView(this);
         titleOrangeTv.setText(slideTitles[index][1]);
-        titleOrangeTv.setTextSize(20);
+        titleOrangeTv.setTextSize(18);
         titleOrangeTv.setTextColor(Color.parseColor("#FF6B00"));
         titleOrangeTv.setTypeface(Typeface.DEFAULT_BOLD);
         titleOrangeTv.setGravity(Gravity.CENTER);
@@ -530,17 +558,17 @@ public class SplashActivity extends Activity {
         subtitleTv.setLineSpacing(dpToPx(2), 1.0f);
         LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        subParams.topMargin = dpToPx(4);
-        subParams.bottomMargin = dpToPx(8);
+        subParams.topMargin = dpToPx(2);
+        subParams.bottomMargin = dpToPx(6);
         slideContainer.addView(subtitleTv, subParams);
 
-        // 4. Middle Graphic Card (Separated from bottom blue wave with 20dp bottom margin)
+        // 4. Middle Graphic Card
         View cardGraphicView = createCardGraphicForSlide(index);
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
         cardParams.leftMargin = dpToPx(4);
         cardParams.rightMargin = dpToPx(4);
-        cardParams.bottomMargin = dpToPx(20);
+        cardParams.bottomMargin = dpToPx(12);
         slideContainer.addView(cardGraphicView, cardParams);
 
         return slideContainer;
@@ -620,11 +648,12 @@ public class SplashActivity extends Activity {
             // Generated 3D HD Illustration Image View
             ImageView illustrationImg = new ImageView(this);
             illustrationImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            illustrationImg.setAdjustViewBounds(true);
             illustrationImg.setImageResource(R.drawable.onboarding_slide1_form);
             LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
             imgParams.gravity = Gravity.CENTER;
-            imgParams.bottomMargin = dpToPx(8);
+            imgParams.bottomMargin = dpToPx(6);
             card.addView(illustrationImg, imgParams);
 
             // Chips Row: ⚡ तेज़ | ✔ सुविधाजनक | 🛡️ विश्वसनीय
@@ -641,11 +670,12 @@ public class SplashActivity extends Activity {
             // Generated 3D HD Illustration Image View (Real Estate)
             ImageView illustrationImg = new ImageView(this);
             illustrationImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            illustrationImg.setAdjustViewBounds(true);
             illustrationImg.setImageResource(R.drawable.onboarding_slide2_speed);
             LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
             imgParams.gravity = Gravity.CENTER;
-            imgParams.bottomMargin = dpToPx(8);
+            imgParams.bottomMargin = dpToPx(6);
             card.addView(illustrationImg, imgParams);
 
             // 4 Grid Badges: प्रॉपर्टी खरीद-बिक्री, दस्तावेज़ वेरिफिकेशन, आसान रेंटल सेवा, 100% सुरक्षित डील
@@ -682,12 +712,13 @@ public class SplashActivity extends Activity {
             // Generated 3D HD Illustration Image View (IT Services)
             ImageView illustrationImg = new ImageView(this);
             illustrationImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            illustrationImg.setAdjustViewBounds(true);
             illustrationImg.setImageResource(R.drawable.onboarding_slide3_cafe);
             LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
             imgParams.gravity = Gravity.CENTER;
-            imgParams.topMargin = dpToPx(6);
-            imgParams.bottomMargin = dpToPx(6);
+            imgParams.topMargin = dpToPx(4);
+            imgParams.bottomMargin = dpToPx(4);
             card.addView(illustrationImg, imgParams);
 
             // Tricolor Banner Ribbon
@@ -708,18 +739,20 @@ public class SplashActivity extends Activity {
             permList.setGravity(Gravity.CENTER_VERTICAL);
             permList.setPadding(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
 
-            boolean hasNotification = true;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                hasNotification = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            }
+            boolean hasNotification = NotificationManagerCompat.from(this).areNotificationsEnabled();
 
             boolean hasLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
                                   checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
 
             final boolean finalHasNotify = hasNotification;
             permList.addView(createPermissionRow("🔔", "नोटिफिकेशन (Notifications)", "कॉल अलर्ट और अपडेट तुरंत पाने के लिए।", hasNotification, v -> {
-                if (!finalHasNotify && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+                if (!finalHasNotify) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 102);
+                    } else {
+                        openNotificationSettings();
+                    }
                 }
             }));
 
@@ -729,7 +762,7 @@ public class SplashActivity extends Activity {
                     requestPermissions(new String[]{
                             android.Manifest.permission.ACCESS_FINE_LOCATION,
                             android.Manifest.permission.ACCESS_COARSE_LOCATION
-                    }, 101);
+                    }, 103);
                 }
             }));
 
@@ -778,8 +811,13 @@ public class SplashActivity extends Activity {
                 }
             });
 
-            permList.addView(allowAllBtn);
-            card.addView(permList);
+            android.widget.ScrollView permScroll = new android.widget.ScrollView(this);
+            permScroll.setVerticalScrollBarEnabled(false);
+            permScroll.setFillViewport(true);
+            permScroll.addView(permList);
+            card.addView(permScroll, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+            card.addView(allowAllBtn);
         }
 
         return card;
@@ -940,16 +978,16 @@ public class SplashActivity extends Activity {
             LinearLayout.LayoutParams dParam;
             GradientDrawable dBg = new GradientDrawable();
             if (i == position) {
-                dParam = new LinearLayout.LayoutParams(dpToPx(18), dpToPx(18));
-                dBg.setCornerRadius(dpToPx(18));
-                dBg.setColor(Color.WHITE); // Large Prominent Solid White Orb
+                dParam = new LinearLayout.LayoutParams(dpToPx(24), dpToPx(7));
+                dBg.setCornerRadius(dpToPx(4));
+                dBg.setColor(Color.WHITE);
             } else {
-                dParam = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
-                dBg.setCornerRadius(dpToPx(14));
-                dBg.setColor(Color.parseColor("#B0FFFFFF")); // Translucent White Orb
+                dParam = new LinearLayout.LayoutParams(dpToPx(7), dpToPx(7));
+                dBg.setCornerRadius(dpToPx(4));
+                dBg.setColor(Color.parseColor("#99FFFFFF"));
             }
-            dParam.leftMargin = dpToPx(6);
-            dParam.rightMargin = dpToPx(6);
+            dParam.leftMargin = dpToPx(4);
+            dParam.rightMargin = dpToPx(4);
             dot.setBackground(dBg);
             dotsLayout.addView(dot, dParam);
         }
@@ -966,6 +1004,44 @@ public class SplashActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == 101) {
             proceedAfterPermission();
+        } else if (requestCode == 102 || requestCode == 103) {
+            refreshSlide4();
+        }
+    }
+
+    private void openNotificationSettings() {
+        try {
+            Intent intent = new Intent();
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            } else {
+                intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", getPackageName(), null));
+            }
+            startActivity(intent);
+        } catch (Exception e) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", getPackageName(), null));
+                startActivity(intent);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void refreshSlide4() {
+        if (slidesLayout != null && slidesLayout.getChildCount() > 3) {
+            slidesLayout.removeViewAt(3);
+            View newSlide = createSlideView(3);
+            slidesLayout.addView(newSlide, 3);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (currentSlide == 3 && slidesLayout != null) {
+            refreshSlide4();
         }
     }
 
@@ -1153,7 +1229,6 @@ public class SplashActivity extends Activity {
         private void init() {
             wavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             wavePaint.setStyle(Paint.Style.FILL);
-            wavePaint.setColor(Color.parseColor("#0052FF"));
         }
 
         @Override
@@ -1161,10 +1236,19 @@ public class SplashActivity extends Activity {
             super.onDraw(canvas);
             int w = getWidth();
             int h = getHeight();
+            if (w <= 0 || h <= 0) return;
+
+            android.graphics.LinearGradient gradient = new android.graphics.LinearGradient(
+                    0, 0, w, h,
+                    Color.parseColor("#0052FF"),
+                    Color.parseColor("#0A3EB8"),
+                    android.graphics.Shader.TileMode.CLAMP
+            );
+            wavePaint.setShader(gradient);
 
             Path path = new Path();
-            path.moveTo(0, h * 0.50f);
-            path.cubicTo(w * 0.3f, h * 0.15f, w * 0.7f, h * 0.70f, w, h * 0.35f);
+            path.moveTo(0, h * 0.28f);
+            path.cubicTo(w * 0.28f, h * 0.08f, w * 0.68f, h * 0.38f, w, h * 0.18f);
             path.lineTo(w, h);
             path.lineTo(0, h);
             path.close();

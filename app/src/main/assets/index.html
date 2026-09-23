@@ -465,7 +465,10 @@
         <div class="info-label" style="margin-left: 2px;">FCM Token (Target Token for Notifications):</div>
         <div class="info-box" id="fcmTokenBox">Detecting Firebase Token...</div>
 
-        <button class="btn-primary" onclick="refreshDeviceInfo()">🔄 Refresh Live Device Info</button>
+        <div class="btn-grid" style="margin-top: 10px;">
+            <button class="btn-primary" onclick="refreshDeviceInfo()">🔄 Refresh Live Info</button>
+            <button class="btn-secondary" onclick="requestNotificationPerm()">🔔 Notification Perm</button>
+        </div>
     </div>
 
     <!-- SECTION 2: Native Voice Speech (TTS) -->
@@ -482,23 +485,18 @@
         <button class="btn-orange" onclick="triggerSpeak()">🔊 बोलकर सुनाएं (Native TTS Speak)</button>
     </div>
 
-    <!-- SECTION 3: Realtime GPS & 24/7 Background Tracking -->
-    <div class="section-title">📍 3. High-Precision GPS & Location Tracking</div>
+    <!-- SECTION 3: High-Precision GPS Location -->
+    <div class="section-title">📍 3. High-Precision GPS Location</div>
     <div class="card">
         <div class="card-header">
             <div class="card-title"><span class="icon">🛰️</span> Live Satellite Fix</div>
-            <span id="trackingBadge" style="font-size: 10px; padding: 4px 8px; border-radius: 8px; background: #1E283F; color: #94A3B8;">Tracking: OFF</span>
         </div>
 
         <div class="info-box" id="locationBox">Press "Get Current GPS" to fetch high-precision coordinates.</div>
 
-        <div class="btn-grid" style="margin-bottom: 10px;">
+        <div class="btn-grid">
             <button class="btn-primary" onclick="fetchLocation()">🎯 Get Current GPS</button>
             <button class="btn-secondary" onclick="requestLocPerm()">🔓 Location Perm</button>
-        </div>
-        <div class="btn-grid">
-            <button class="btn-green" onclick="startLocationTracking()">▶️ Start 24/7 Tracking</button>
-            <button class="btn-danger" onclick="stopLocationTracking()">⏹️ Stop Tracking</button>
         </div>
     </div>
 
@@ -692,6 +690,19 @@
             });
         }
 
+        function requestNotificationPerm() {
+            if (window.Android && window.Android.openNotificationPermission) {
+                window.Android.openNotificationPermission();
+                showToast('Requested notification permission dialog');
+            } else if (window.Notification && window.Notification.requestPermission) {
+                window.Notification.requestPermission().then(res => {
+                    showToast('Notification permission status: ' + res);
+                });
+            } else {
+                showToast('Notification bridge not available');
+            }
+        }
+
         // 2. Text-to-Speech (TTS)
         function triggerSpeak() {
             const text = document.getElementById('speakInput').value;
@@ -731,16 +742,21 @@
                 try {
                     const raw = window.Android.getLocation();
                     const loc = JSON.parse(raw);
-                    if (loc.error) {
-                        locBox.innerText = 'GPS Error: ' + loc.message + '\nTry clicking "Location Perm" button.';
+                    if (!loc.error) {
+                        locBox.innerHTML = `📍 <b>Latitude:</b> ${loc.latitude.toFixed(6)}<br>` +
+                                           `📍 <b>Longitude:</b> ${loc.longitude.toFixed(6)}<br>` +
+                                           `🎯 <b>Accuracy:</b> ${loc.accuracy} meters<br>` +
+                                           `⚡ <b>Speed:</b> ${loc.speed} m/s | <b>Tracking:</b> ${loc.is_tracking ? 'Active' : 'Idle'}`;
+                        showToast('GPS fix acquired!');
                         return;
+                    } else {
+                        locBox.innerText = 'GPS Status: ' + loc.message;
+                        showToast(loc.message);
+                        if (loc.message.includes('Acquiring') || loc.message.includes('satellite')) {
+                            setTimeout(fetchLocation, 2500);
+                            return;
+                        }
                     }
-                    locBox.innerHTML = `📍 <b>Latitude:</b> ${loc.latitude.toFixed(6)}<br>` +
-                                       `📍 <b>Longitude:</b> ${loc.longitude.toFixed(6)}<br>` +
-                                       `🎯 <b>Accuracy:</b> ${loc.accuracy} meters<br>` +
-                                       `⚡ <b>Speed:</b> ${loc.speed} m/s | <b>Tracking:</b> ${loc.is_tracking ? 'Active' : 'Idle'}`;
-                    showToast('GPS fix acquired!');
-                    return;
                 } catch(e) {
                     locBox.innerText = 'Location Parse Error: ' + e.message;
                 }
@@ -756,8 +772,9 @@
                         showToast('HTML5 Geolocation acquired!');
                     },
                     err => {
-                        locBox.innerText = 'Geolocation Error: ' + err.message;
-                    }
+                        locBox.innerText = 'Geolocation Error: ' + err.message + '\nEnsure phone GPS Location is turned ON in settings.';
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
             } else {
                 locBox.innerText = 'Geolocation is not supported.';
@@ -776,29 +793,7 @@
             }
         }
 
-        function startLocationTracking() {
-            if (window.Android && window.Android.startTracking) {
-                window.Android.startTracking("https://api.eformx.in/?api=location/store");
-                document.getElementById('trackingBadge').innerText = 'Tracking: ACTIVE';
-                document.getElementById('trackingBadge').style.background = '#059669';
-                document.getElementById('trackingBadge').style.color = '#fff';
-                showToast('▶️ 24/7 Background GPS Service Started!');
-            } else {
-                showToast('Background tracking requires eFormX Native Android app');
-            }
-        }
 
-        function stopLocationTracking() {
-            if (window.Android && window.Android.stopTracking) {
-                window.Android.stopTracking();
-                document.getElementById('trackingBadge').innerText = 'Tracking: OFF';
-                document.getElementById('trackingBadge').style.background = '#1E283F';
-                document.getElementById('trackingBadge').style.color = '#94A3B8';
-                showToast('⏹️ Background tracking stopped');
-            } else {
-                showToast('Native bridge not available');
-            }
-        }
 
         // 4. Native Share
         function triggerShare() {

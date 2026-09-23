@@ -43,6 +43,9 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.browser.customtabs.CustomTabsIntent;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
+import android.content.pm.PackageManager;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -59,6 +62,7 @@ public class MainActivity extends ComponentActivity {
     private ValueCallback<Uri[]> filePathCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
     private ActivityResultLauncher<String[]> locationPermissionLauncher;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
     private AndroidBridge androidBridge;
     private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isErrorState = false;
@@ -98,14 +102,51 @@ public class MainActivity extends ComponentActivity {
                     Boolean coarseGranted = result.getOrDefault(android.Manifest.permission.ACCESS_COARSE_LOCATION, false);
                     if (fineGranted || coarseGranted) {
                         Toast.makeText(MainActivity.this, "Location permission granted", Toast.LENGTH_SHORT).show();
-                    } else {
+                        if (androidBridge != null) {
+                            androidBridge.initLocationListener();
+                        }
+                    } else if (result.containsKey(android.Manifest.permission.ACCESS_FINE_LOCATION)) {
                         Toast.makeText(MainActivity.this, "Location permission denied", Toast.LENGTH_SHORT).show();
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && result.containsKey(android.Manifest.permission.POST_NOTIFICATIONS)) {
+                        Boolean notifGranted = result.get(android.Manifest.permission.POST_NOTIFICATIONS);
+                        if (Boolean.TRUE.equals(notifGranted)) {
+                            Toast.makeText(MainActivity.this, "Notification permission granted", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(MainActivity.this, "Notification permission denied", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                }
+        );
+
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                isGranted -> {
+                    if (Boolean.TRUE.equals(isGranted)) {
+                        Toast.makeText(MainActivity.this, "Notification permission granted", Toast.LENGTH_SHORT).show();
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                !shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS)) {
+                            Toast.makeText(MainActivity.this, "कृपया सेटिंग्स में जाकर नोटिफिकेशन चालू करें", Toast.LENGTH_LONG).show();
+                            openNotificationSettings();
+                        } else {
+                            Toast.makeText(MainActivity.this, "Notification permission denied", Toast.LENGTH_SHORT).show();
+                        }
                     }
                 }
         );
 
         androidBridge = new AndroidBridge(this, locationPermissionLauncher);
         checkAndRequestAllPermissions();
+
+        // Ensure any old tracking notification is cancelled
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(2002);
+            }
+        } catch (Exception ignored) {}
 
         com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
@@ -133,17 +174,13 @@ public class MainActivity extends ComponentActivity {
                     }
                 });
 
-        int themeColor = Color.WHITE;
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-        getWindow().setStatusBarColor(themeColor);
-
-        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        if (insetsController != null) {
-            insetsController.setAppearanceLightStatusBars(true);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
         }
-
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
 
         FrameLayout container = new FrameLayout(this);
         container.setBackgroundColor(Color.WHITE);
@@ -410,19 +447,22 @@ public class MainActivity extends ComponentActivity {
 
         setContentView(container);
 
+        applyStatusBarAppearance();
+
+        ViewCompat.setOnApplyWindowInsetsListener(container, (v, windowInsets) -> {
+            Insets insets = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+            return windowInsets;
+        });
+
         registerNetworkCallback();
 
         WebSettings webSettings = webView.getSettings();
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         webSettings.setJavaScriptEnabled(true);
         webSettings.setGeolocationEnabled(true);
-
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
-            }
-        });
         webSettings.setDomStorageEnabled(true);
         webSettings.setDatabaseEnabled(true);
         webSettings.setDatabasePath(getDir("databases", MODE_PRIVATE).getPath());
@@ -488,6 +528,23 @@ public class MainActivity extends ComponentActivity {
                         "    });" +
                         "  };" +
                         "}" +
+                        "if (typeof window.Notification === 'undefined') {" +
+                        "  window.Notification = function(title, options) {};" +
+                        "}" +
+                        "try {" +
+                        "  Object.defineProperty(window.Notification, 'permission', {" +
+                        "    get: function() { return (window.Android && window.Android.hasNotificationPermission && window.Android.hasNotificationPermission()) ? 'granted' : 'default'; }," +
+                        "    configurable: true" +
+                        "  });" +
+                        "} catch(e) {}" +
+                        "window.Notification.requestPermission = function(cb) {" +
+                        "  if (window.Android && window.Android.openNotificationPermission) {" +
+                        "    window.Android.openNotificationPermission();" +
+                        "  }" +
+                        "  var perm = (window.Android && window.Android.hasNotificationPermission && window.Android.hasNotificationPermission()) ? 'granted' : 'default';" +
+                        "  if (typeof cb === 'function') cb(perm);" +
+                        "  return Promise.resolve(perm);" +
+                        "};" +
                         "window.fcm_token = '" + token + "';" +
                         "window.device_id = '" + deviceId + "';";
                 view.evaluateJavascript(js, null);
@@ -653,6 +710,11 @@ public class MainActivity extends ComponentActivity {
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+            }
+
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 if (newProgress >= 100) {
@@ -1333,6 +1395,7 @@ public class MainActivity extends ComponentActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        applyStatusBarAppearance();
         MyFirebaseMessagingService.stopAllMediaAndTTS(this);
     }
 
@@ -1376,21 +1439,58 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
+    public void openNotificationSettings() {
+        try {
+            Intent intent = new Intent();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            } else {
+                intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", getPackageName(), null));
+            }
+            startActivity(intent);
+        } catch (Exception e) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", getPackageName(), null));
+                startActivity(intent);
+            } catch (Exception ex) {
+                android.util.Log.e("Settings", "Unable to open notification settings: " + ex.getMessage());
+            }
+        }
+    }
+
+    public void requestNotificationPermissionExplicit() {
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS);
+                    return;
+                }
+            }
+            openNotificationSettings();
+        } else {
+            Toast.makeText(this, "Notification permission already granted", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     public void checkAndRequestAllPermissions() {
         try {
             java.util.List<String> permissionsToRequest = new java.util.ArrayList<>();
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                if (!NotificationManagerCompat.from(this).areNotificationsEnabled() ||
+                        checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS);
                 }
             }
 
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
             }
 
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
             }
 
@@ -1399,6 +1499,17 @@ public class MainActivity extends ComponentActivity {
             }
         } catch (Exception e) {
             android.util.Log.e("Permissions", "Error checking/requesting permissions: " + e.getMessage());
+        }
+    }
+
+    private void applyStatusBarAppearance() {
+        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (insetsController != null) {
+            insetsController.show(WindowInsetsCompat.Type.statusBars());
+            insetsController.setAppearanceLightStatusBars(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                insetsController.setAppearanceLightNavigationBars(true);
+            }
         }
     }
 }
