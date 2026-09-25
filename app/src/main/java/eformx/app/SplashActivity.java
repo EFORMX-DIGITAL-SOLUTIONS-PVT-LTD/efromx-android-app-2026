@@ -64,6 +64,7 @@ public class SplashActivity extends Activity {
 
     private FrameLayout splashRootLayout;
     private volatile String redirectUrl = null;
+    private final java.util.concurrent.atomic.AtomicBoolean hasTransitioned = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,36 +77,43 @@ public class SplashActivity extends Activity {
         splashRunnable = () -> {
             if (isFinishing() || isDestroyed()) return;
             if (splashRootLayout != null) {
-                splashRootLayout.animate()
-                        .alpha(0f)
-                        .setDuration(300)
-                        .withEndAction(() -> {
-                            SharedPreferences prefs = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE);
-                            boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
-                            if (getIntent().getBooleanExtra("reset_onboarding", false)) {
-                                hasSeenOnboarding = false;
-                            }
-                            if (hasSeenOnboarding) {
-                                launchMainActivity();
-                            } else {
-                                setupOnboardingUi();
-                            }
-                        })
-                        .start();
-            } else {
-                SharedPreferences prefs = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE);
-                boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
-                if (getIntent().getBooleanExtra("reset_onboarding", false)) {
-                    hasSeenOnboarding = false;
-                }
-                if (hasSeenOnboarding) {
-                    launchMainActivity();
-                } else {
-                    setupOnboardingUi();
-                }
+                try {
+                    splashRootLayout.animate()
+                            .alpha(0f)
+                            .setDuration(250)
+                            .start();
+                } catch (Exception ignored) {}
             }
+            transitionFromSplash();
         };
-        splashHandler.postDelayed(splashRunnable, 2200);
+        splashHandler.postDelayed(splashRunnable, 1600);
+
+        // Failsafe timer: guarantees transition even if animations are disabled or delayed
+        splashHandler.postDelayed(this::transitionFromSplash, 2200);
+    }
+
+    private void transitionFromSplash() {
+        if (hasTransitioned.getAndSet(true)) {
+            return;
+        }
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+        if (splashHandler != null) {
+            splashHandler.removeCallbacksAndMessages(null);
+        }
+
+        SharedPreferences prefs = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE);
+        boolean hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false);
+        if (getIntent().getBooleanExtra("reset_onboarding", false)) {
+            hasSeenOnboarding = false;
+        }
+
+        if (hasSeenOnboarding) {
+            launchMainActivity();
+        } else {
+            setupOnboardingUi();
+        }
     }
 
     private void showBrandingSplashScreen() {
@@ -128,6 +136,9 @@ public class SplashActivity extends Activity {
 
         splashRootLayout = new FrameLayout(this);
         splashRootLayout.setBackgroundColor(Color.parseColor("#F4F8FF"));
+        splashRootLayout.setClickable(true);
+        splashRootLayout.setFocusable(true);
+        splashRootLayout.setOnClickListener(v -> transitionFromSplash());
 
         AmbientBackgroundView ambientBgView = new AmbientBackgroundView(this);
         splashRootLayout.addView(ambientBgView, new FrameLayout.LayoutParams(
@@ -291,6 +302,31 @@ public class SplashActivity extends Activity {
         LinearLayout contentLayout = new LinearLayout(this);
         contentLayout.setOrientation(LinearLayout.VERTICAL);
         contentLayout.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        // Top Header Bar with Skip Button
+        FrameLayout topBar = new FrameLayout(this);
+        LinearLayout.LayoutParams topBarParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        topBarParams.setMargins(dpToPx(16), dpToPx(4), dpToPx(16), dpToPx(4));
+        topBar.setLayoutParams(topBarParams);
+
+        TextView skipBtn = new TextView(this);
+        skipBtn.setText("Skip ➔");
+        skipBtn.setTextSize(13);
+        skipBtn.setTextColor(Color.parseColor("#475569"));
+        skipBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        skipBtn.setPadding(dpToPx(14), dpToPx(6), dpToPx(14), dpToPx(6));
+        GradientDrawable skipBg = new GradientDrawable();
+        skipBg.setColor(Color.parseColor("#E2E8F0"));
+        skipBg.setCornerRadius(dpToPx(14));
+        skipBtn.setBackground(skipBg);
+        FrameLayout.LayoutParams skipLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        skipLp.gravity = Gravity.END;
+        topBar.addView(skipBtn, skipLp);
+        skipBtn.setOnClickListener(v -> proceedAfterPermission());
+
+        contentLayout.addView(topBar);
 
         // Center HorizontalScrollView Area for 4 Slides
         scrollView = new HorizontalScrollView(this);
@@ -466,8 +502,8 @@ public class SplashActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (splashHandler != null && splashRunnable != null) {
-            splashHandler.removeCallbacks(splashRunnable);
+        if (splashHandler != null) {
+            splashHandler.removeCallbacksAndMessages(null);
         }
         super.onDestroy();
     }

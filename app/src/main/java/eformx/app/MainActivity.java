@@ -2,6 +2,7 @@ package eformx.app;
 
 import android.app.DownloadManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -67,6 +68,13 @@ public class MainActivity extends ComponentActivity {
     private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isErrorState = false;
     private boolean hasLoadedAnyPageSuccessfully = false;
+
+    private final android.os.Handler loadingWatchdogHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable loadingWatchdogRunnable = () -> {
+        if (fullScreenLoadingOverlay != null && fullScreenLoadingOverlay.getVisibility() == View.VISIBLE) {
+            fullScreenLoadingOverlay.setVisibility(View.GONE);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -236,6 +244,9 @@ public class MainActivity extends ComponentActivity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         centerParams.gravity = Gravity.CENTER;
         fullScreenLoadingOverlay.addView(centerLoadingLayout, centerParams);
+        fullScreenLoadingOverlay.setOnClickListener(v -> {
+            fullScreenLoadingOverlay.setVisibility(View.GONE);
+        });
 
         container.addView(fullScreenLoadingOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -604,6 +615,9 @@ public class MainActivity extends ComponentActivity {
                 applySmartCacheStrategy(url);
                 injectSharePolyfill(view);
 
+                loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
+                loadingWatchdogHandler.postDelayed(loadingWatchdogRunnable, 5000);
+
                 if (fullScreenLoadingOverlay != null) {
                     if (url != null) {
                         String lowerUrl = url.toLowerCase();
@@ -640,12 +654,11 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
                 injectSharePolyfill(view);
                 CookieManager.getInstance().flush();
-                if (view != null && view.getProgress() >= 100) {
-                    if (fullScreenLoadingOverlay != null) {
-                        fullScreenLoadingOverlay.setVisibility(View.GONE);
-                    }
+                if (fullScreenLoadingOverlay != null) {
+                    fullScreenLoadingOverlay.setVisibility(View.GONE);
                 }
                 if (!isErrorState && url != null && !url.startsWith("data:") && !url.contains("error")) {
                     hasLoadedAnyPageSuccessfully = true;
@@ -717,7 +730,8 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-                if (newProgress >= 100) {
+                if (newProgress >= 60) {
+                    loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
                     if (fullScreenLoadingOverlay != null && fullScreenLoadingOverlay.getVisibility() == View.VISIBLE) {
                         fullScreenLoadingOverlay.setVisibility(View.GONE);
                     }
@@ -1313,6 +1327,9 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
+        if (loadingWatchdogHandler != null) {
+            loadingWatchdogHandler.removeCallbacksAndMessages(null);
+        }
         if (androidBridge != null) {
             androidBridge.cleanup();
         }
@@ -1477,6 +1494,12 @@ public class MainActivity extends ComponentActivity {
 
     public void checkAndRequestAllPermissions() {
         try {
+            SharedPreferences prefs = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE);
+            if (prefs.getBoolean("has_prompted_main_permissions", false)) {
+                return;
+            }
+            prefs.edit().putBoolean("has_prompted_main_permissions", true).apply();
+
             java.util.List<String> permissionsToRequest = new java.util.ArrayList<>();
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
