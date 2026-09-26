@@ -133,6 +133,29 @@ private void injectSharePolyfill(WebView view) {
 }
 ```
 
+#### 5. Trigger Native App Exit Dialog via JavaScript (`Android.exitApp`)
+Web portals can trigger the native eFormX exit dialog when a user clicks "Logout" or an in-page "Exit" button:
+
+```javascript
+if (window.Android && window.Android.exitApp) {
+    window.Android.exitApp();
+}
+```
+
+#### 6. WebView Cache & Storage Management
+When web developers need to flush client cache, session data, or force clean state:
+
+```javascript
+// Example: Clear web storage (localStorage, sessionStorage)
+localStorage.clear();
+sessionStorage.clear();
+
+// In Native Android (Java), cache can be flushed completely via:
+// webView.clearCache(true);
+// android.webkit.WebStorage.getInstance().deleteAllData();
+// android.webkit.CookieManager.getInstance().removeAllCookies(null);
+```
+
 ---
 
 ### 🌐 Complete Web Portal Demo HTML Code (`index.html`)
@@ -221,15 +244,17 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
         <div class="card">
             <h2>🔗 Deep Links & External Browsing</h2>
             <a href="https://apply.eformx.com/portal.php?browser=external" class="link-item">🌐 Open in Chrome External Browser (?browser=external)</a>
+            <a href="https://apply.eformx.com/logout?android=exit" class="link-item" style="color: #f43f5e;">🚪 Exit Intercept Test (?android=exit)</a>
             <a href="eformx://apply/test_deep_link" class="link-item">🚀 Test Custom Deep Link (eformx://apply/test_deep_link)</a>
             <a href="https://wa.me/919876543210?text=Namaste%20eFormX" class="link-item">💬 Open WhatsApp Native Chat</a>
         </div>
 
         <!-- 6. Web Share API (Android Native System Share) -->
         <div class="card">
-            <h2>📤 Native Web Share API</h2>
+            <h2>📤 Native Web Share API & Exit Trigger</h2>
             <button class="btn btn-primary" onclick="testWebShare()">Share via Android Native Sheet</button>
-            <div id="shareOutput" class="output-box">Share status will appear here...</div>
+            <button class="btn btn-warning" onclick="testExitApp()">Trigger Native Exit App Dialog</button>
+            <div id="shareOutput" class="output-box">Status will appear here...</div>
         </div>
 
     </div>
@@ -340,6 +365,14 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
                 out.innerHTML = "<b>Status:</b> <span class='badge-red'>Web Share Not Supported</span>";
             }
         }
+
+        function testExitApp() {
+            if (isBridgeAvailable() && window.Android.exitApp) {
+                window.Android.exitApp();
+            } else {
+                alert("Native Android bridge not available");
+            }
+        }
     </script>
 </body>
 </html>
@@ -375,6 +408,7 @@ Control browser navigation dynamically using query parameters attached to any UR
 | **`browser=external`** | `browser=external` (also supports `browser=extrunal`) | **Forces External Browser:** Intercepts page load and opens the target URL in Chrome / Phone Default Browser (`Intent.ACTION_VIEW`). |
 | **`callback=app`** | `callback=app` (also supports `calback=app`) | **Forces App WebView:** Overrides `browser=external` and keeps navigation inside the native App WebView. Ideal for payment callbacks and redirect URLs. |
 | **`share_link=true`** | `share_link=true` | **Web Share Override:** Overrides external browser redirection to process Web Share sheets (`navigator.share`) directly inside app. |
+| **`android=exit`** | `android=exit` | **Immediate Exit Intercept:** When attached to any URL (e.g. `logout.php?android=exit`), hardware back-button press bypasses WebView history traversal and directly triggers the native **eFormX Exit Confirmation Dialog**. |
 
 ##### 3️⃣ HTML Testing Snippets (Ready to Use)
 
@@ -404,7 +438,7 @@ Control browser navigation dynamically using query parameters attached to any UR
 </html>
 ```
 
-###### 📄 HTML Code 2: URL Query Parameters (`browser=external` & `callback=app`) Testing Page
+###### 📄 HTML Code 2: URL Query Parameters (`browser=external`, `callback=app`, & `android=exit`) Testing Page
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -417,6 +451,7 @@ Control browser navigation dynamically using query parameters attached to any UR
         .btn { display: block; background: #17a2b8; color: #fff; padding: 14px 20px; text-decoration: none; border-radius: 6px; margin: 12px 0; text-align: center; font-weight: bold; }
         .external { background: #dc3545; }
         .callback { background: #28a745; }
+        .exit { background: #e11d48; }
     </style>
 </head>
 <body>
@@ -428,12 +463,82 @@ Control browser navigation dynamically using query parameters attached to any UR
     <!-- Test 2: Stay/Return inside App WebView -->
     <a href="https://apply.eformx.com/success.php?callback=app" class="btn callback">2. Return to App WebView (callback=app)</a>
 
-    <!-- Test 3: Legacy Spellings Test -->
-    <a href="https://eformx.com?browser=extrunal" class="btn external">3. Test Legacy Spelling (browser=extrunal)</a>
-    <a href="https://eformx.com?calback=app" class="btn callback">4. Test Legacy Callback (calback=app)</a>
+    <!-- Test 3: Exit Intercept Test -->
+    <a href="https://apply.eformx.com/logout?android=exit" class="btn exit">3. Test Exit Intercept (android=exit)</a>
+
+    <!-- Test 4: Legacy Spellings Test -->
+    <a href="https://eformx.com?browser=extrunal" class="btn external">4. Test Legacy Spelling (browser=extrunal)</a>
+    <a href="https://eformx.com?calback=app" class="btn callback">5. Test Legacy Callback (calback=app)</a>
 </body>
 </html>
 ```
+
+---
+
+### 🧹 WebView Cache & Storage Management Reference
+
+Android WebView caches web content across multiple layers: **HTTP RAM & Disk Cache**, **DOM LocalStorage / SessionStorage**, **IndexedDB / Web Databases**, and **Cookies**.
+
+#### 1. Native Android Cache Clearing APIs (Java)
+
+| Cache Component | Native Java Code | Purpose |
+| :--- | :--- | :--- |
+| **HTTP Memory & Disk Cache** | `webView.clearCache(true);` | Deletes temporary images, CSS, JavaScript, and HTML cached files from RAM and storage. |
+| **DOM Storage & IndexedDB** | `WebStorage.getInstance().deleteAllData();` | Clears all `localStorage`, `sessionStorage`, and client databases saved by websites. |
+| **Cookies & Sessions** | `CookieManager.getInstance().removeAllCookies(null);`<br>`CookieManager.getInstance().flush();` | Destroys all stored login cookies, session tokens, and tracking cookies. |
+| **History & Form Autocomplete** | `webView.clearHistory();`<br>`webView.clearFormData();` | Resets back-forward navigation stack and removes saved form inputs. |
+| **App Internal Cache Directory** | `deleteDir(context.getCacheDir());` | Removes deep physical cache files located in `/data/data/eformx.app/cache/`. |
+
+#### 2. Deep Clean Helper Implementation
+```java
+public void clearAllWebViewData(WebView webView, Context context) {
+    if (webView != null) {
+        webView.clearCache(true);
+        webView.clearHistory();
+        webView.clearFormData();
+    }
+    // Clear DOM databases and localStorage
+    android.webkit.WebStorage.getInstance().deleteAllData();
+    
+    // Clear cookies
+    android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
+    cookieManager.removeAllCookies(null);
+    cookieManager.flush();
+    
+    // Clear physical cache directory
+    try {
+        java.io.File cacheDir = context.getCacheDir();
+        if (cacheDir != null && cacheDir.isDirectory()) {
+            deleteDirectory(cacheDir);
+        }
+    } catch (Exception ignored) {}
+}
+
+private boolean deleteDirectory(java.io.File dir) {
+    if (dir != null && dir.isDirectory()) {
+        String[] children = dir.list();
+        if (children != null) {
+            for (String child : children) {
+                boolean success = deleteDirectory(new java.io.File(dir, child));
+                if (!success) return false;
+            }
+        }
+        return dir.delete();
+    } else if (dir != null && dir.isFile()) {
+        return dir.delete();
+    }
+    return false;
+}
+```
+
+#### 3. WebView Cache Mode Modes in `WebSettings`
+
+| Cache Mode | Code | Behavior |
+| :--- | :--- | :--- |
+| **`LOAD_DEFAULT`** | `webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);` | Standard HTTP cache: checks cache validity against server headers before loading. |
+| **`LOAD_CACHE_ELSE_NETWORK`** | `webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);` | Loads from cache if available (instant millisecond rendering); only hits network if cache is absent or expired. |
+| **`LOAD_NO_CACHE`** | `webSettings.setCacheMode(WebSettings.LOAD_NO_CACHE);` | Completely bypasses local cache; forces network request for every single asset. |
+| **`LOAD_CACHE_ONLY`** | `webSettings.setCacheMode(WebSettings.LOAD_CACHE_ONLY);` | Never hits network; relies strictly on locally cached data (offline mode). |
 
 ---
 
