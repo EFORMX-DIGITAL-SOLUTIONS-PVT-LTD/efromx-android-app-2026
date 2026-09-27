@@ -8,6 +8,8 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 
 ### 🚀 Performance & Rendering Engine
 - **GPU Hardware Layer Acceleration:** Uses `View.LAYER_TYPE_HARDWARE` on WebView for 60fps smooth scrolling and instant page rendering.
+- **Instant Top Progress Bar:** Sleek 2.5dp horizontal progress bar (`#4F46E5`) at the top of the WebView providing immediate 0ms visual tactile response on link clicks before page rendering begins.
+- **Automatic Device Parameter Enrichment:** Transparently appends `platform_refrence=android&platform_refrence_id=<android_id>` to all in-app, deep link, and external browser navigation URLs.
 - **Smart Memory Caching:** `WebSettings.LOAD_DEFAULT` optimized with DOM Storage, Web Database, and Cookie Persistence for high-speed dynamic loading.
 - **HTML5 Geolocation Support:** Hardware-accelerated geolocation enabled with custom `WebChromeClient` callback (`onGeolocationPermissionsShowPrompt`) for seamless `navigator.geolocation.getCurrentPosition(...)` calls.
 - **Native GPS Hardware Location Provider:** Direct native satellite fix (`ACCESS_FINE_LOCATION`) query to fetch high-precision coordinates instantly for web forms and maps.
@@ -38,6 +40,7 @@ Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GP
 | **`Android.requestAllPermissions()`** | None | `void` | Triggers prompt for all missing permissions (Notifications, Location GPS) | `Android.requestAllPermissions();`                                        |
 | **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();`                                                      |
 | **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();`                                       |
+| **`Android.showProcessLoader(page)`** | `page` (String, optional) | `void` | Triggers native full-screen 'Processing your request...' loading overlay and top progress bar | `Android.showProcessLoader('property');`                                  |
 | **`AndroidShare.share(title, text, url)`** | `title`, `text`, `url` (Strings) | `void` | Triggers native Android system Share Sheet intent to share links/text via WhatsApp, Email, Messages, etc. | `AndroidShare.share('eFormX', 'Check out eFormX', 'https://eformx.com');` |
 | **`AndroidShare.reloadApp()`** | None | `void` | Refreshes and reloads the active portal URL in WebView on the UI thread | `AndroidShare.reloadApp();`                                               |
 
@@ -388,8 +391,11 @@ The eFormX native Android client includes built-in deep-link handling and dynami
 
 The app registers intent filters for both custom scheme (`eformx://`) and verified web domains (`https://apply.eformx.com` & `https://eformx.com`):
 
-- **Custom Scheme URI Example:** `eformx://apply.eformx.com/form123`
-- **Parsing Behavior:** `parseEformxUrl(rawUrl)` converts `eformx://` URIs to standard `https://` URLs and loads them directly inside the app WebView (`webView.loadUrl(targetUrl)`).
+- **Supported Formats:**
+  - `eformx://apply.eformx.com/status?id=1001` (Scheme-less domain)
+  - `eformx://https://eformx.com/` (Explicit HTTPS prefix)
+  - `eformx://eformx.com/dashboard` (Direct domain target)
+- **Parsing Behavior:** `parseEformxUrl(rawUrl)` converts all `eformx://` URIs to standard `https://` URLs, attaches Android identification parameters, and loads them directly inside the app WebView (`webView.loadUrl(targetUrl)`).
 - **Duplicate Prevention:** Normalizes trailing slashes and checks current WebView URL to prevent redundant page reloads if the user is already on the target page.
 
 ```bash
@@ -399,13 +405,46 @@ adb shell am start -W -a android.intent.action.VIEW -d "eformx://apply.eformx.co
 
 ---
 
-#### 2️⃣ Dynamic URL Query Parameters (`isExternalBrowserRequested`)
+#### 2️⃣ Automatic Platform Reference Parameters (`platform_refrence` & `platform_refrence_id`)
+
+Every URL handled by the application—including initial app launch, internal link clicks, custom deep-links, and external browser redirections—is automatically enriched with device identifier parameters:
+
+| Query Parameter | Value Format | Description |
+| :--- | :--- | :--- |
+| **`platform_refrence`** | `android` | Identifies client platform as Android OS. |
+| **`platform_refrence_id`** | `<64-bit Hex Android ID>` | Unique device identifier (`Settings.Secure.ANDROID_ID`, e.g. `31a542b89ce14f20`). |
+
+- **Example Input:** `https://apply.eformx.com/status?id=1001`
+- **Enriched Output:** `https://apply.eformx.com/status?id=1001&platform_refrence=android&platform_refrence_id=31a542b89ce14f20`
+- **Duplicate Safe:** If the URL already contains `platform_refrence`, parameters are preserved without duplicate appending.
+
+---
+
+#### 3️⃣ HTML DOM Hook: `data-android="open"` (Instant Native Process Loader)
+
+Web developers can trigger the native full-screen **"Processing your request..."** overlay on any link or button simply by adding the `data-android="open"` attribute:
+
+```html
+<!-- Native Process Loader automatically triggers on click -->
+<a href="https://eformx.in" data-android="open" data-page="property">
+    Open Property
+</a>
+```
+
+- **Attributes Supported:**
+  - `data-android="open"`: Enables instant 0ms native full-screen loader + top progress bar.
+  - `data-page="<name>"` *(optional)*: Customizes the loader title to `Processing your request (<Name>)...`.
+- **Auto-Dismiss:** Automatically hides when the target page finishes rendering (`onPageFinished`), or after the 5-second safety watchdog timer.
+
+---
+
+#### 4️⃣ Dynamic URL Query Parameters (`isExternalBrowserRequested`)
 
 Control browser navigation dynamically using query parameters attached to any URL:
 
 | Standard Query Parameter | Supported Aliases / Variants | Behavior & App Action |
 | :--- | :--- | :--- |
-| **`browser=external`** | `browser=external` (also supports `browser=extrunal`) | **Forces External Browser:** Intercepts page load and opens the target URL in Chrome / Phone Default Browser (`Intent.ACTION_VIEW`). |
+| **`browser=external`** | `browser=external` (also supports `browser=extrunal`) | **Forces External Browser:** Intercepts page load, appends platform reference parameters, and opens the target URL in Chrome / Phone Default Browser (`Intent.ACTION_VIEW` / Custom Tabs). |
 | **`callback=app`** | `callback=app` (also supports `calback=app`) | **Forces App WebView:** Overrides `browser=external` and keeps navigation inside the native App WebView. Ideal for payment callbacks and redirect URLs. |
 | **`share_link=true`** | `share_link=true` | **Web Share Override:** Overrides external browser redirection to process Web Share sheets (`navigator.share`) directly inside app. |
 | **`android=exit`** | `android=exit` | **Immediate Exit Intercept:** When attached to any URL (e.g. `logout.php?android=exit`), hardware back-button press bypasses WebView history traversal and directly triggers the native **eFormX Exit Confirmation Dialog**. |
@@ -472,6 +511,288 @@ Control browser navigation dynamically using query parameters attached to any UR
 </body>
 </html>
 ```
+
+###### 📄 HTML Code 3: Complete All-In-One Feature Test Page (`all-features-test.html`)
+Save or host this single HTML page to test 100% of eFormX Android App features simultaneously:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>eFormX Complete Feature Test Portal</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #EEF2FF;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --dark: #0F172A;
+            --card-bg: #1E293B;
+            --border: #334155;
+            --text-main: #F8FAFC;
+            --text-muted: #94A3B8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--dark); color: var(--text-main); padding: 16px 16px 50px 16px; line-height: 1.5; }
+        .header { text-align: center; margin-bottom: 20px; padding: 12px; border-bottom: 1px solid var(--border); }
+        .header h1 { font-size: 20px; color: #fff; margin-bottom: 4px; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+        .badge-native { background: #064E3B; color: #6EE7B7; border: 1px solid #059669; }
+        .badge-web { background: #78350F; color: #FCD34D; border: 1px solid #D97706; }
+        .badge-active { background: #064E3B; color: #6EE7B7; }
+        .badge-missing { background: #7F1D1D; color: #FCA5A5; }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+        .card h2 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #E2E8F0; }
+        .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: var(--text-muted); }
+        .info-value { font-family: monospace; color: #38BDF8; word-break: break-all; text-align: right; max-width: 60%; }
+        .btn-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
+        .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; text-align: center; color: #fff; transition: opacity 0.2s; }
+        .btn:active { opacity: 0.8; transform: scale(0.98); }
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .btn-warning { background: var(--warning); color: #000; }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: #E2E8F0; }
+        .param-box { background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 12px; font-family: monospace; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <h1>🚀 eFormX All-In-One Feature Testbed</h1>
+        <div id="bridgeBadge" class="badge badge-native">Detecting Native App...</div>
+    </div>
+
+    <!-- 1. Live Platform Reference Parameters Inspector -->
+    <div class="card">
+        <h2>🔍 1. Automatic Platform URL Parameters</h2>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+            Verifies that current URL contains auto-injected device reference parameters:
+        </p>
+        <div class="info-row">
+            <span class="info-label">platform_refrence:</span>
+            <span id="paramPlatform" class="info-value">Checking...</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">platform_refrence_id:</span>
+            <span id="paramPlatformId" class="info-value">Checking...</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Inspection Status:</span>
+            <span id="paramStatus" class="badge">Checking...</span>
+        </div>
+        <div class="param-box" id="fullUrlDisplay">Full URL: ...</div>
+    </div>
+
+    <!-- 2. Native Process Loader Hook (data-android="open") -->
+    <div class="card">
+        <h2>⚡ 2. Native Full-Screen Process Loader Hook</h2>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+            Links with <code>data-android="open"</code> trigger instant 0ms full-screen "Processing your request..." loader before navigating:
+        </p>
+        <div class="btn-grid">
+            <!-- Property Page Link -->
+            <a href="https://eformx.in" data-android="open" data-page="property" class="btn btn-primary">
+                🏠 Open Property (data-page="property")
+            </a>
+            <!-- KYC Portal Link -->
+            <a href="https://apply.eformx.com" data-android="open" data-page="kyc verification" class="btn btn-primary">
+                📋 Open KYC (data-page="kyc verification")
+            </a>
+            <!-- Direct JavaScript Trigger -->
+            <button onclick="triggerJsLoader()" class="btn btn-outline">
+                ⚙️ Direct JS Call: Android.showProcessLoader('Loan Request')
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. Deep Link Schemes (eformx://) -->
+    <div class="card">
+        <h2>🔗 3. Deep Link Schemes (eformx://)</h2>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+            Test custom URL schemes resolved by parseEformxUrl():
+        </p>
+        <div class="btn-grid">
+            <a href="eformx://apply.eformx.com/status?id=1001" class="btn btn-success">
+                🔗 Scheme-less: eformx://apply.eformx.com/status?id=1001
+            </a>
+            <a href="eformx://https://eformx.com/" class="btn btn-success">
+                🔗 Explicit HTTPS: eformx://https://eformx.com/
+            </a>
+            <a href="eformx://eformx.com/dashboard" class="btn btn-success">
+                🔗 Direct Domain: eformx://eformx.com/dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- 4. Dynamic URL Query Parameters -->
+    <div class="card">
+        <h2>🌐 4. Browser Navigation Query Parameters</h2>
+        <div class="btn-grid">
+            <!-- External Browser with Auto-Enriched Params -->
+            <a href="https://auth.eformx.in/?auth_url=https://shubharambhrealty.eformx.com/custumer&browser=external" class="btn btn-warning">
+                🌐 Open in Chrome / CustomTabs (browser=external)
+            </a>
+            <!-- Keep in App WebView -->
+            <a href="https://apply.eformx.com/?callback=app" class="btn btn-outline">
+                📲 Stay in App WebView (callback=app)
+            </a>
+            <!-- Exit Confirmation Dialog Intercept -->
+            <a href="https://apply.eformx.com/logout?android=exit" class="btn btn-danger">
+                🚪 Trigger Exit Dialog (android=exit)
+            </a>
+        </div>
+    </div>
+
+    <!-- 5. Native Hardware & JavaScript Bridge Controls -->
+    <div class="card">
+        <h2>📱 5. Native Android Bridge & Sensors</h2>
+        <div class="info-row">
+            <span class="info-label">Android ID:</span>
+            <span id="txtDeviceId" class="info-value">--</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">FCM Token:</span>
+            <span id="txtFcmToken" class="info-value">--</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Network Type:</span>
+            <span id="txtNetwork" class="info-value">--</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">App Version:</span>
+            <span id="txtAppVer" class="info-value">--</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">GPS Fix:</span>
+            <span id="txtGpsLoc" class="info-value">Tap Get GPS below</span>
+        </div>
+
+        <div class="btn-grid" style="margin-top: 14px;">
+            <button onclick="fetchNativeLocation()" class="btn btn-primary">📍 1. Fetch GPS Satellite Fix</button>
+            <button onclick="testTtsSpeak()" class="btn btn-outline">🗣️ 2. Test Text-to-Speech (Hindi/English)</button>
+            <button onclick="testNativeShare()" class="btn btn-success">📤 3. Open Native Android Share Sheet</button>
+            <button onclick="requestPermissions()" class="btn btn-outline">🔐 4. Request System Permissions</button>
+        </div>
+    </div>
+
+    <script>
+        // Run on Page Load
+        document.addEventListener('DOMContentLoaded', function() {
+            inspectUrlParams();
+            detectBridge();
+        });
+
+        // 1. Inspect URL parameters
+        function inspectUrlParams() {
+            var urlParams = new URLSearchParams(window.location.search);
+            var platform = urlParams.get('platform_refrence');
+            var platformId = urlParams.get('platform_refrence_id');
+
+            document.getElementById('fullUrlDisplay').innerText = "Full URL: " + window.location.href;
+            document.getElementById('paramPlatform').innerText = platform ? platform : "Not Present";
+            document.getElementById('paramPlatformId').innerText = platformId ? platformId : "Not Present";
+
+            var statusEl = document.getElementById('paramStatus');
+            if (platform === 'android' && platformId) {
+                statusEl.innerText = "ACTIVE (ENRICHED)";
+                statusEl.className = "badge badge-active";
+            } else {
+                statusEl.innerText = "MISSING PARAMETERS";
+                statusEl.className = "badge badge-missing";
+            }
+        }
+
+        // 2. Detect Android Bridge
+        function detectBridge() {
+            var badge = document.getElementById('bridgeBadge');
+            if (window.Android) {
+                badge.innerText = "Connected to Native eFormX App";
+                badge.className = "badge badge-native";
+
+                // Populate Specs
+                if (window.Android.getDeviceId) document.getElementById('txtDeviceId').innerText = window.Android.getDeviceId();
+                if (window.Android.getFcmToken) document.getElementById('txtFcmToken').innerText = window.Android.getFcmToken().substring(0, 20) + "...";
+                if (window.Android.getNetworkType) document.getElementById('txtNetwork').innerText = window.Android.getNetworkType();
+                if (window.Android.getAppVersion) document.getElementById('txtAppVer').innerText = window.Android.getAppVersion();
+            } else {
+                badge.innerText = "Running in Standard Web Browser";
+                badge.className = "badge badge-web";
+            }
+        }
+
+        // 3. Trigger JS Loader Directly
+        function triggerJsLoader() {
+            if (window.Android && window.Android.showProcessLoader) {
+                window.Android.showProcessLoader('Loan Request');
+            } else {
+                alert('window.Android.showProcessLoader is only available inside native Android app');
+            }
+        }
+
+        // 4. GPS Fix
+        function fetchNativeLocation() {
+            if (window.Android && window.Android.getLocation) {
+                try {
+                    var loc = JSON.parse(window.Android.getLocation());
+                    if (!loc.error) {
+                        document.getElementById('txtGpsLoc').innerText = loc.latitude.toFixed(5) + ", " + loc.longitude.toFixed(5) + " (±" + loc.accuracy + "m)";
+                    } else {
+                        document.getElementById('txtGpsLoc').innerText = "Err: " + loc.message;
+                        if (window.Android.openLocationPermission) window.Android.openLocationPermission();
+                    }
+                } catch(e) {
+                    document.getElementById('txtGpsLoc').innerText = "Parse Error";
+                }
+            } else {
+                alert('Native GPS bridge unavailable');
+            }
+        }
+
+        // 5. Text to Speech
+        function testTtsSpeak() {
+            if (window.Android && window.Android.speak) {
+                window.Android.speak("ई-फॉर्म-एक्स एंड्रॉइड ऐप में आपका स्वागत है। टेस्ट सफल रहा।");
+            } else {
+                alert('Native TTS unavailable');
+            }
+        }
+
+        // 6. Native Share Sheet
+        function testNativeShare() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'eFormX App Feature Test',
+                    text: 'Testing all eFormX Android features!',
+                    url: window.location.href
+                }).catch(function(){});
+            } else if (window.AndroidShare && window.AndroidShare.share) {
+                window.AndroidShare.share('eFormX Test', 'Testing eFormX App!', window.location.href);
+            } else {
+                alert('Share sheet unavailable');
+            }
+        }
+
+        // 7. Request Permissions
+        function requestPermissions() {
+            if (window.Android && window.Android.requestAllPermissions) {
+                window.Android.requestAllPermissions();
+            } else {
+                alert('Permission API unavailable');
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+---
 
 ---
 

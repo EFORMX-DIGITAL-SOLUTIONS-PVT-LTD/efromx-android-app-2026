@@ -56,6 +56,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 public class MainActivity extends ComponentActivity {
 
     private WebView webView;
+    private ProgressBar topProgressBar;
     private FrameLayout fullScreenLoadingOverlay;
     private FrameLayout errorOverlay;
     private TextView loadingTitleTv;
@@ -202,6 +203,18 @@ public class MainActivity extends ComponentActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+
+        topProgressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        topProgressBar.setMax(100);
+        topProgressBar.setIndeterminate(false);
+        topProgressBar.setVisibility(View.GONE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            topProgressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4F46E5")));
+        }
+        FrameLayout.LayoutParams pbParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(3));
+        pbParams.gravity = Gravity.TOP;
+        container.addView(topProgressBar, pbParams);
 
         // Ultra-Professional Minimal Grey Loading Overlay (Exact Match with Screenshot)
         fullScreenLoadingOverlay = new FrameLayout(this);
@@ -557,7 +570,19 @@ public class MainActivity extends ComponentActivity {
                         "  return Promise.resolve(perm);" +
                         "};" +
                         "window.fcm_token = '" + token + "';" +
-                        "window.device_id = '" + deviceId + "';";
+                        "window.device_id = '" + deviceId + "';" +
+                        "if (!window._eformx_click_hooked) {" +
+                        "  window._eformx_click_hooked = true;" +
+                        "  document.addEventListener('click', function(e) {" +
+                        "    try {" +
+                        "      var el = e.target.closest('[data-android=\"open\"]');" +
+                        "      if (el && window.Android && window.Android.showProcessLoader) {" +
+                        "        var page = el.getAttribute('data-page') || '';" +
+                        "        window.Android.showProcessLoader(page);" +
+                        "      }" +
+                        "    } catch(err) {}" +
+                        "  }, true);" +
+                        "}";
                 view.evaluateJavascript(js, null);
             }
 
@@ -576,6 +601,10 @@ public class MainActivity extends ComponentActivity {
                     if (url.startsWith("eformx://") || url.startsWith("eformx:/")) {
                         final String targetUrl = parseEformxUrl(url);
                         runOnUiThread(() -> {
+                            if (topProgressBar != null) {
+                                topProgressBar.setVisibility(View.VISIBLE);
+                                topProgressBar.setProgress(20);
+                            }
                             if (webView != null) {
                                 String currentUrl = webView.getUrl();
                                 if (currentUrl == null || !currentUrl.replaceAll("/$", "").equalsIgnoreCase(targetUrl.replaceAll("/$", ""))) {
@@ -594,7 +623,17 @@ public class MainActivity extends ComponentActivity {
             public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
                 if (request != null && request.getUrl() != null) {
                     String url = request.getUrl().toString();
+                    if (topProgressBar != null) {
+                        topProgressBar.setVisibility(View.VISIBLE);
+                        topProgressBar.setProgress(20);
+                    }
+                    url = appendPlatformParams(url);
                     if (handleUrl(view, url)) {
+                        return true;
+                    }
+                    String currentUrl = view != null ? view.getUrl() : null;
+                    if (currentUrl == null || !currentUrl.equals(url)) {
+                        view.loadUrl(url);
                         return true;
                     }
                 }
@@ -603,6 +642,11 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (topProgressBar != null) {
+                    topProgressBar.setVisibility(View.VISIBLE);
+                    topProgressBar.setProgress(20);
+                }
+                url = appendPlatformParams(url);
                 if (handleUrl(view, url)) {
                     return true;
                 }
@@ -618,7 +662,12 @@ public class MainActivity extends ComponentActivity {
                 loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
                 loadingWatchdogHandler.postDelayed(loadingWatchdogRunnable, 5000);
 
-                if (fullScreenLoadingOverlay != null) {
+                if (topProgressBar != null) {
+                    topProgressBar.setVisibility(View.VISIBLE);
+                    topProgressBar.setProgress(25);
+                }
+
+                if (fullScreenLoadingOverlay != null && !hasLoadedAnyPageSuccessfully) {
                     if (url != null) {
                         String lowerUrl = url.toLowerCase();
                         if (lowerUrl.contains("dashboard") || lowerUrl.contains("panel")) {
@@ -657,6 +706,15 @@ public class MainActivity extends ComponentActivity {
                 loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
                 injectSharePolyfill(view);
                 CookieManager.getInstance().flush();
+                if (topProgressBar != null) {
+                    topProgressBar.setProgress(100);
+                    topProgressBar.postDelayed(() -> {
+                        if (topProgressBar != null) {
+                            topProgressBar.setVisibility(View.GONE);
+                            topProgressBar.setProgress(0);
+                        }
+                    }, 250);
+                }
                 if (fullScreenLoadingOverlay != null) {
                     fullScreenLoadingOverlay.setVisibility(View.GONE);
                 }
@@ -671,6 +729,9 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
+                if (topProgressBar != null) {
+                    topProgressBar.setVisibility(View.GONE);
+                }
                 if (fullScreenLoadingOverlay != null) {
                     fullScreenLoadingOverlay.setVisibility(View.GONE);
                 }
@@ -701,6 +762,9 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                if (topProgressBar != null) {
+                    topProgressBar.setVisibility(View.GONE);
+                }
                 if (fullScreenLoadingOverlay != null) {
                     fullScreenLoadingOverlay.setVisibility(View.GONE);
                 }
@@ -730,6 +794,22 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
+                if (topProgressBar != null) {
+                    topProgressBar.setVisibility(View.VISIBLE);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        topProgressBar.setProgress(newProgress, true);
+                    } else {
+                        topProgressBar.setProgress(newProgress);
+                    }
+                    if (newProgress >= 100) {
+                        topProgressBar.postDelayed(() -> {
+                            if (topProgressBar != null) {
+                                topProgressBar.setVisibility(View.GONE);
+                                topProgressBar.setProgress(0);
+                            }
+                        }, 250);
+                    }
+                }
                 if (newProgress >= 60) {
                     loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
                     if (fullScreenLoadingOverlay != null && fullScreenLoadingOverlay.getVisibility() == View.VISIBLE) {
@@ -820,7 +900,7 @@ public class MainActivity extends ComponentActivity {
         if (intent == null) return;
 
         if (intent.hasExtra("target_url")) {
-            String targetUrl = intent.getStringExtra("target_url");
+            String targetUrl = appendPlatformParams(intent.getStringExtra("target_url"));
 
             if (targetUrl != null && !targetUrl.isEmpty()) {
                 if (webView != null) {
@@ -836,6 +916,7 @@ public class MainActivity extends ComponentActivity {
         } else if (webView != null && webView.getUrl() == null) {
             String defaultUrl = getSharedPreferences(SecureConfig.getPrefsName(), MODE_PRIVATE)
                     .getString(SecureConfig.getKeyRedirectUrl(), SecureConfig.getDefaultWebUrl());
+            defaultUrl = appendPlatformParams(defaultUrl);
             applySmartCacheStrategy(defaultUrl);
             webView.loadUrl(defaultUrl);
         }
@@ -865,8 +946,9 @@ public class MainActivity extends ComponentActivity {
             return;
         }
 
-        applySmartCacheStrategy(rawUrl);
-        webView.loadUrl(rawUrl);
+        String finalUrl = appendPlatformParams(rawUrl);
+        applySmartCacheStrategy(finalUrl);
+        webView.loadUrl(finalUrl);
     }
 
     private boolean isExternalBrowserRequested(String url) {
@@ -875,6 +957,54 @@ public class MainActivity extends ComponentActivity {
         boolean hasCallbackApp = url.contains("calback=app") || url.contains("callback=app");
         boolean hasShareLink = url.contains("share_link=true");
         return hasExternal && !hasCallbackApp && !hasShareLink;
+    }
+
+    public void showProcessLoader(String page) {
+        runOnUiThread(() -> {
+            if (fullScreenLoadingOverlay != null) {
+                if (page != null && !page.trim().isEmpty()) {
+                    String cleanPage = page.trim();
+                    String capPage = cleanPage.substring(0, 1).toUpperCase() + cleanPage.substring(1);
+                    loadingTitleTv.setText("Processing your request (" + capPage + ")...");
+                } else {
+                    loadingTitleTv.setText("Processing your request...");
+                }
+                loadingSubtitleTv.setText("Please wait a moment");
+                fullScreenLoadingOverlay.setVisibility(View.VISIBLE);
+            }
+            if (topProgressBar != null) {
+                topProgressBar.setVisibility(View.VISIBLE);
+                topProgressBar.setProgress(20);
+            }
+            loadingWatchdogHandler.removeCallbacks(loadingWatchdogRunnable);
+            loadingWatchdogHandler.postDelayed(loadingWatchdogRunnable, 5000);
+        });
+    }
+
+    private String appendPlatformParams(String url) {
+        if (url == null || url.trim().isEmpty()) return url;
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return url;
+        }
+
+        try {
+            Uri uri = Uri.parse(url);
+            if (uri.getQueryParameter("platform_refrence") != null) {
+                return url;
+            }
+
+            String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (deviceId == null) {
+                deviceId = "";
+            }
+
+            Uri.Builder builder = uri.buildUpon();
+            builder.appendQueryParameter("platform_refrence", "android");
+            builder.appendQueryParameter("platform_refrence_id", deviceId);
+            return builder.build().toString();
+        } catch (Exception e) {
+            return url;
+        }
     }
 
     private String parseEformxUrl(String rawUrl) {
@@ -891,19 +1021,25 @@ public class MainActivity extends ComponentActivity {
         int httpIndex = stripped.indexOf("http://");
 
         if (httpsIndex != -1) {
-            return stripped.substring(httpsIndex);
+            return appendPlatformParams(stripped.substring(httpsIndex));
         } else if (httpIndex != -1) {
-            return stripped.substring(httpIndex);
+            return appendPlatformParams(stripped.substring(httpIndex));
         }
 
         if (stripped.startsWith("https//")) {
-            return "https://" + stripped.substring("https//".length());
+            return appendPlatformParams("https://" + stripped.substring("https//".length()));
         } else if (stripped.startsWith("http//")) {
-            return "http://" + stripped.substring("http//".length());
+            return appendPlatformParams("http://" + stripped.substring("http//".length()));
         } else if (stripped.startsWith("https:/")) {
-            return "https://" + stripped.substring("https:/".length());
+            return appendPlatformParams("https://" + stripped.substring("https:/".length()));
         } else if (stripped.startsWith("http:/")) {
-            return "http://" + stripped.substring("http:/".length());
+            return appendPlatformParams("http://" + stripped.substring("http:/".length()));
+        }
+
+        // If stripped already contains a valid host like apply.eformx.com or eformx.com
+        if (stripped.startsWith("apply.eformx.com") || stripped.startsWith("eformx.com") || stripped.startsWith("www.eformx.com")
+                || stripped.matches("^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*|\\?.*)?$")) {
+            return appendPlatformParams("https://" + stripped);
         }
 
         String baseUrl = getSharedPreferences("eformx_prefs", MODE_PRIVATE)
@@ -911,7 +1047,7 @@ public class MainActivity extends ComponentActivity {
         if (!baseUrl.endsWith("/")) {
             baseUrl += "/";
         }
-        return baseUrl + stripped;
+        return appendPlatformParams(baseUrl + stripped);
     }
 
     private void applySmartCacheStrategy(String url) {
@@ -1070,8 +1206,9 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
-    private boolean handleUrl(WebView view, String url) {
-        if (url == null) return false;
+    private boolean handleUrl(WebView view, String rawUrl) {
+        if (rawUrl == null) return false;
+        final String url = appendPlatformParams(rawUrl);
         applySmartCacheStrategy(url);
 
         if (url.contains("api.whatsapp.com") || url.contains("wa.me") || url.startsWith("whatsapp://")) {

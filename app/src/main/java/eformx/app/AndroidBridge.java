@@ -99,6 +99,13 @@ public class AndroidBridge {
     }
 
     @JavascriptInterface
+    public void showProcessLoader(String page) {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).showProcessLoader(page);
+        }
+    }
+
+    @JavascriptInterface
     public void openLocationPermission() {
         if (activity == null) return;
         activity.runOnUiThread(() -> {
