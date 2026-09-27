@@ -79,7 +79,7 @@
             android:resource="@mipmap/ic_launcher" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
-            android:resource="@color/purple_500" />
+            android:resource="@color/brand_primary" />
 
         <service
             android:name=".MyFirebaseMessagingService"

@@ -246,14 +246,20 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     }
 
     private void sendNotification(String title, String messageBody, String targetUrl, String openType, String imageUrl, String soundType, String speakText, String callId, String callbackUrl) {
+        int notificationId = (int) (System.currentTimeMillis() & 0x7FFFFFFF);
+        if (notificationId <= 0) {
+            notificationId = new java.util.Random().nextInt(1000000) + 1;
+        }
+
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (targetUrl != null && !targetUrl.isEmpty()) {
             intent.putExtra("target_url", targetUrl);
             intent.putExtra("open_type", openType);
         }
+        intent.putExtra("notification_id", notificationId);
         PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, (int) System.currentTimeMillis(), intent,
+                this, notificationId, intent,
                 PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
@@ -297,8 +303,9 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         }
         deleteIntent.putExtra("status", "dismissed");
         deleteIntent.putExtra("action", "call_cut");
+        deleteIntent.putExtra("notification_id", notificationId);
         PendingIntent deletePendingIntent = PendingIntent.getBroadcast(
-                this, (int) System.currentTimeMillis() + 1, deleteIntent,
+                this, notificationId + 1, deleteIntent,
                 PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
@@ -307,6 +314,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         NotificationCompat.Builder notificationBuilder =
                 new NotificationCompat.Builder(this, channelId)
                         .setSmallIcon(R.drawable.ic_notification_small)
+                        .setColor(0xFF1A73E8)
                         .setContentTitle(title)
                         .setContentText(messageBody)
                         .setAutoCancel(true)
@@ -314,9 +322,10 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                         .setPriority(NotificationCompat.PRIORITY_MAX)
                         .setCategory(category)
                         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                        .setFullScreenIntent(pendingIntent, true)
                         .setContentIntent(pendingIntent)
-                        .setDeleteIntent(deletePendingIntent);
+                        .setDeleteIntent(deletePendingIntent)
+                        .setGroup("eformx_indiv_" + notificationId)
+                        .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL);
 
         if (appLogoBitmap != null) {
             notificationBuilder.setLargeIcon(appLogoBitmap);
@@ -333,19 +342,22 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             }
             declineIntent.putExtra("status", "declined");
             declineIntent.putExtra("action", "call_cut");
+            declineIntent.putExtra("notification_id", notificationId);
             PendingIntent declinePendingIntent = PendingIntent.getBroadcast(
-                    this, (int) System.currentTimeMillis() + 2, declineIntent,
+                    this, notificationId + 2, declineIntent,
                     PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
             );
 
             Intent answerIntent = new Intent(this, MainActivity.class);
             answerIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            answerIntent.putExtra("is_call_answer", true);
+            answerIntent.putExtra("notification_id", notificationId);
             if (targetUrl != null && !targetUrl.isEmpty()) {
                 answerIntent.putExtra("target_url", targetUrl);
                 answerIntent.putExtra("open_type", openType);
             }
             PendingIntent answerPendingIntent = PendingIntent.getActivity(
-                    this, (int) System.currentTimeMillis() + 3, answerIntent,
+                    this, notificationId + 3, answerIntent,
                     PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
             );
 
@@ -430,7 +442,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             if ("ringtone".equalsIgnoreCase(soundType) || "call".equalsIgnoreCase(soundType) || "alarm".equalsIgnoreCase(soundType)) {
                 notification.flags |= Notification.FLAG_INSISTENT;
             }
-            notificationManager.notify((int) System.currentTimeMillis(), notification);
+            notificationManager.notify(notificationId, notification);
         }
     }
 
@@ -495,21 +507,20 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                     textToSpeech = null;
                 }
             } catch (Exception ignored) {}
+
+            try {
+                if (context != null) {
+                    android.os.Vibrator vibrator = (android.os.Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+                    if (vibrator != null) {
+                        vibrator.cancel();
+                    }
+                }
+            } catch (Exception ignored) {}
         });
     }
 
     public static void stopAllMediaAndTTS(Context context) {
         muteSoundOnly(context);
-        new Handler(Looper.getMainLooper()).post(() -> {
-            try {
-                if (context != null) {
-                    NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-                    if (nm != null) {
-                        nm.cancelAll();
-                    }
-                }
-            } catch (Exception ignored) {}
-        });
     }
 
     private static void playCallRingtone(Context context, Uri ringtoneUri) {
@@ -884,6 +895,13 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 String messageId = remoteMessage != null ? remoteMessage.getMessageId() : "";
                 Map<String, String> data = remoteMessage != null ? remoteMessage.getData() : null;
                 String callId = (data != null && data.containsKey("call_id")) ? data.get("call_id") : "";
+                String trackId = (data != null && data.containsKey("track_id")) ? data.get("track_id") : "";
+                if (trackId.isEmpty() && !callId.isEmpty()) {
+                    trackId = callId;
+                }
+                if (trackId.isEmpty() && !messageId.isEmpty()) {
+                    trackId = messageId;
+                }
 
                 org.json.JSONObject payload = new org.json.JSONObject();
                 payload.put("device_id", deviceId);
@@ -894,6 +912,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 payload.put("status", "delivered");
                 payload.put("network", "DATA_ON");
                 payload.put("message_id", messageId);
+                payload.put("track_id", trackId);
                 if (!callId.isEmpty()) {
                     payload.put("call_id", callId);
                 }

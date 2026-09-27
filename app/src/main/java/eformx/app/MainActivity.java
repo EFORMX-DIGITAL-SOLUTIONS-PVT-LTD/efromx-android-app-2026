@@ -1,6 +1,7 @@
 package eformx.app;
 
 import android.app.DownloadManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -80,7 +81,7 @@ public class MainActivity extends ComponentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        MyFirebaseMessagingService.stopAllMediaAndTTS(this);
+        dismissSourceNotification(getIntent());
 
         fileChooserLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -1329,8 +1330,26 @@ public class MainActivity extends ComponentActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        MyFirebaseMessagingService.stopAllMediaAndTTS(this);
+        dismissSourceNotification(intent);
         handleNotificationOrDeepLinkIntent(intent);
+    }
+
+    private void dismissSourceNotification(Intent intent) {
+        if (intent != null) {
+            int notifId = intent.getIntExtra("notification_id", -1);
+            boolean isCallAnswer = intent.getBooleanExtra("is_call_answer", false);
+            if (notifId != -1) {
+                try {
+                    android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                    if (nm != null) {
+                        nm.cancel(notifId);
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (isCallAnswer || notifId != -1) {
+                MyFirebaseMessagingService.stopAllMediaAndTTS(this);
+            }
+        }
     }
 
     public class WebAppInterface {
@@ -1573,7 +1592,6 @@ public class MainActivity extends ComponentActivity {
     protected void onResume() {
         super.onResume();
         applyStatusBarAppearance();
-        MyFirebaseMessagingService.stopAllMediaAndTTS(this);
     }
 
     @Override

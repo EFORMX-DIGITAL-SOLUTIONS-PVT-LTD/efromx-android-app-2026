@@ -24,6 +24,25 @@ public class NotificationDismissReceiver extends BroadcastReceiver {
             Log.d(TAG, "Notification dismissed/cut. Stopping sound and speech.");
             MyFirebaseMessagingService.stopAllMediaAndTTS(context);
 
+            int notifId = intent.getIntExtra("notification_id", -1);
+            if (notifId != -1 && context != null) {
+                try {
+                    android.app.NotificationManager nm = (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                    if (nm != null) {
+                        nm.cancel(notifId);
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            try {
+                if (context != null) {
+                    android.os.Vibrator vibrator = (android.os.Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+                    if (vibrator != null) {
+                        vibrator.cancel();
+                    }
+                }
+            } catch (Exception ignored) {}
+
             String callId = intent.getStringExtra("call_id");
             String status = intent.getStringExtra("status");
             String callbackUrl = intent.getStringExtra("callback_url");
