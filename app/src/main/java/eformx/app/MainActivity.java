@@ -573,6 +573,24 @@ public class MainActivity extends ComponentActivity {
                         "window.device_id = '" + deviceId + "';" +
                         "if (!window._eformx_click_hooked) {" +
                         "  window._eformx_click_hooked = true;" +
+                        "  function _eformx_enrich(a) {" +
+                        "    try {" +
+                        "      var h = a.getAttribute('href');" +
+                        "      var did = window.device_id || '';" +
+                        "      if (h && did && (h.indexOf('http://') === 0 || h.indexOf('https://') === 0 || h.indexOf('eformx://') === 0) && h.indexOf('platform_refrence=') === -1) {" +
+                        "        var sep = h.indexOf('?') !== -1 ? '&' : '?';" +
+                        "        a.setAttribute('href', h + sep + 'platform_refrence=android&platform_refrence_id=' + encodeURIComponent(did));" +
+                        "      }" +
+                        "    } catch(e) {}" +
+                        "  }" +
+                        "  function _eformx_scan() {" +
+                        "    try {" +
+                        "      var links = document.querySelectorAll('a[href]');" +
+                        "      for (var i = 0; i < links.length; i++) { _eformx_enrich(links[i]); }" +
+                        "    } catch(e) {}" +
+                        "  }" +
+                        "  _eformx_scan();" +
+                        "  setInterval(_eformx_scan, 1500);" +
                         "  document.addEventListener('click', function(e) {" +
                         "    try {" +
                         "      var el = e.target.closest('[data-android=\"open\"]');" +
@@ -580,6 +598,8 @@ public class MainActivity extends ComponentActivity {
                         "        var page = el.getAttribute('data-page') || '';" +
                         "        window.Android.showProcessLoader(page);" +
                         "      }" +
+                        "      var a = e.target.closest('a');" +
+                        "      if (a) { _eformx_enrich(a); }" +
                         "    } catch(err) {}" +
                         "  }, true);" +
                         "}";
