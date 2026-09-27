@@ -12,8 +12,8 @@ public class VolumeButtonReceiver extends BroadcastReceiver {
         if (intent != null) {
             String action = intent.getAction();
             if ("android.media.VOLUME_CHANGED_ACTION".equals(action) || Intent.ACTION_MEDIA_BUTTON.equals(action)) {
-                Log.d("VolumeReceiver", "Volume key pressed. Muting notification speech & audio.");
-                MyFirebaseMessagingService.stopAllMediaAndTTS(context);
+                Log.d("VolumeReceiver", "Volume key pressed. Muting call ringtone and speech.");
+                MyFirebaseMessagingService.muteSoundOnly(context);
             }
         }
     }

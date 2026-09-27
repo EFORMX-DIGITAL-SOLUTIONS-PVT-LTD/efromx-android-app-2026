@@ -20,7 +20,7 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 ### 📱 Android JavaScript Interface (`AndroidBridge`)
 Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GPS coordinates, device info, device ID, app version, package name, network status, trigger Text-To-Speech output, and request location permissions:
 
-| Method | Parameters | Return Type | Description | JavaScript Usage Examp<br/>+le                                            |
+| Method | Parameters | Return Type | Description | JavaScript Usage Examp<br/>le                                             |
 | :--- | :--- | :--- | :--- |:--------------------------------------------------------------------------|
 | **`Android.getFcmToken()`** | None | `String` | Returns device's Firebase Push Notification Registration Token string | `let token = Android.getFcmToken();`                                      |
 | **`Android.getLocation()`** | None | `String` (JSON) | Returns GPS Latitude, Longitude, Accuracy, Altitude, Speed, Time JSON | `let loc = JSON.parse(Android.getLocation());`                            |

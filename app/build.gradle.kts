@@ -11,8 +11,8 @@ android {
         applicationId = "eformx.app"
         minSdk = 24
         targetSdk = 37
-        versionCode = 6
-        versionName = "1.7"
+        versionCode = 7
+        versionName = "1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -1445,6 +1445,8 @@ public class MainActivity extends ComponentActivity {
         return true;
     }
 
+    private long lastPresencePingTime = 0;
+
     private void registerNetworkCallback() {
         try {
             ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
@@ -1460,6 +1462,12 @@ public class MainActivity extends ComponentActivity {
                                 hideErrorOverlay();
                             }
                         });
+
+                        long now = System.currentTimeMillis();
+                        if (now - lastPresencePingTime > 5000) {
+                            lastPresencePingTime = now;
+                            MyFirebaseMessagingService.sendNetworkPresencePing(MainActivity.this, "data_connected");
+                        }
                     }
                 };
                 cm.registerDefaultNetworkCallback(networkCallback);
@@ -1576,7 +1584,7 @@ public class MainActivity extends ComponentActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
-            MyFirebaseMessagingService.stopAllMediaAndTTS(this);
+            MyFirebaseMessagingService.muteSoundOnly(this);
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
