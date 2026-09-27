@@ -496,25 +496,11 @@ public class MainActivity extends ComponentActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Smart Dynamic Cache Strategy: 2-Tier Active & Pending Cache Versioning
-        android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
-        String pendingVersion = prefs.getString("cache_ver_pending", null);
-        if (pendingVersion != null && isNetworkAvailable()) {
-            // Apply pending update on next app launch
-            prefs.edit()
-                 .putString("cache_ver_global", pendingVersion)
-                 .remove("cache_ver_pending")
-                 .apply();
+        // Live Data when Online, Offline Cache when Offline
+        if (isNetworkAvailable()) {
             webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         } else {
-            String activeVersion = prefs.getString("cache_ver_global", null);
-            if (activeVersion != null || !isNetworkAvailable()) {
-                // Active cache exists: Instant milliseconds load from disk cache
-                webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-            } else {
-                // Fresh install / no cache: Live fetch from network
-                webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
-            }
+            webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
         }
 
         // High Render Priority
@@ -1453,11 +1439,20 @@ public class MainActivity extends ComponentActivity {
             if (cm != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 networkCallback = new ConnectivityManager.NetworkCallback() {
                     @Override
-                    public void onLost(Network network) {}
+                    public void onLost(Network network) {
+                        runOnUiThread(() -> {
+                            if (webView != null) {
+                                webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                            }
+                        });
+                    }
 
                     @Override
                     public void onAvailable(Network network) {
                         runOnUiThread(() -> {
+                            if (webView != null) {
+                                webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                            }
                             if (errorOverlay != null && errorOverlay.getVisibility() == View.VISIBLE) {
                                 hideErrorOverlay();
                             }
