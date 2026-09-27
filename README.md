@@ -243,16 +243,26 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
             <div id="permissionOutput" class="output-box">Permission statuses will appear here...</div>
         </div>
 
-        <!-- 5. Deep Links & External Navigation -->
+        <!-- 5. Deep Links, Process Loader & External Navigation -->
         <div class="card">
-            <h2>🔗 Deep Links & External Browsing</h2>
+            <h2>🔗 Deep Links, Process Loader & Navigation</h2>
+            <a href="https://eformx.in" data-android="open" data-page="property" class="link-item" style="color: #38bdf8; font-weight: bold;">🏠 Open Property (data-android="open" data-page="property")</a>
+            <a href="https://apply.eformx.com" data-android="open" data-page="kyc verification" class="link-item" style="color: #38bdf8; font-weight: bold;">📋 Open KYC Portal (data-android="open" data-page="kyc verification")</a>
             <a href="https://apply.eformx.com/portal.php?browser=external" class="link-item">🌐 Open in Chrome External Browser (?browser=external)</a>
             <a href="https://apply.eformx.com/logout?android=exit" class="link-item" style="color: #f43f5e;">🚪 Exit Intercept Test (?android=exit)</a>
-            <a href="eformx://apply/test_deep_link" class="link-item">🚀 Test Custom Deep Link (eformx://apply/test_deep_link)</a>
+            <a href="eformx://apply.eformx.com/status?id=1001" class="link-item">🚀 Test Custom Scheme (eformx://apply.eformx.com/status?id=1001)</a>
+            <a href="eformx://https://eformx.com/" class="link-item">🚀 Test Explicit HTTPS Scheme (eformx://https://eformx.com/)</a>
             <a href="https://wa.me/919876543210?text=Namaste%20eFormX" class="link-item">💬 Open WhatsApp Native Chat</a>
+            <button class="btn btn-purple" style="margin-top: 8px;" onclick="testShowProcessLoader()">⚙️ Trigger JS Loader: Android.showProcessLoader('Property')</button>
         </div>
 
-        <!-- 6. Web Share API (Android Native System Share) -->
+        <!-- 6. Platform Reference URL Parameter Status -->
+        <div class="card">
+            <h2>🔍 Auto Platform Reference Parameters</h2>
+            <div id="urlParamStatus" class="output-box">Inspecting current URL...</div>
+        </div>
+
+        <!-- 7. Web Share API (Android Native System Share) -->
         <div class="card">
             <h2>📤 Native Web Share API & Exit Trigger</h2>
             <button class="btn btn-primary" onclick="testWebShare()">Share via Android Native Sheet</button>
@@ -376,6 +386,31 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
                 alert("Native Android bridge not available");
             }
         }
+
+        function testShowProcessLoader() {
+            if (isBridgeAvailable() && window.Android.showProcessLoader) {
+                window.Android.showProcessLoader('Property Search');
+            } else {
+                alert("Android.showProcessLoader is only available inside eFormX App");
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            var params = new URLSearchParams(window.location.search);
+            var platform = params.get('platform_refrence');
+            var platformId = params.get('platform_refrence_id');
+            var el = document.getElementById('urlParamStatus');
+            if (el) {
+                if (platform === 'android' && platformId) {
+                    el.innerHTML = "<b>Status:</b> <span class='badge-green'>ACTIVE (ENRICHED)</span><br>" +
+                                   "<b>platform_refrence:</b> " + platform + "<br>" +
+                                   "<b>platform_refrence_id:</b> " + platformId;
+                } else {
+                    el.innerHTML = "<b>Status:</b> <span class='badge-red'>MISSING IN CURRENT URL</span><br>" +
+                                   "Note: Click any link to test auto-injection!";
+                }
+            }
+        });
     </script>
 </body>
 </html>
