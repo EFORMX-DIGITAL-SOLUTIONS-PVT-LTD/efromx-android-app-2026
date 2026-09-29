@@ -107,6 +107,26 @@ public class AndroidBridge {
         });
     }
 
+    private String appendPlatformParams(String url) {
+        if (url == null || url.trim().isEmpty() || activity == null) return url;
+        try {
+            Uri uri = Uri.parse(url);
+            if (uri.getQueryParameter("platform_refrence") != null) {
+                return url;
+            }
+            String deviceId = Settings.Secure.getString(activity.getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (deviceId == null) deviceId = "";
+
+            return uri.buildUpon()
+                    .appendQueryParameter("platform_refrence", "android")
+                    .appendQueryParameter("platform_refrence_id", deviceId)
+                    .build()
+                    .toString();
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
     @JavascriptInterface
     public void openBrowser(String url) {
         if (activity == null || url == null || url.trim().isEmpty()) return;
@@ -116,12 +136,14 @@ public class AndroidBridge {
                 if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
                     targetUrl = "https://" + targetUrl;
                 }
+                targetUrl = appendPlatformParams(targetUrl);
                 Uri uri = Uri.parse(targetUrl);
                 CustomTabsIntent customTabsIntent = new CustomTabsIntent.Builder().build();
                 customTabsIntent.launchUrl(activity, uri);
             } catch (Exception e) {
                 try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()));
+                    String fallbackUrl = appendPlatformParams(url.trim());
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl));
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     activity.startActivity(intent);
                 } catch (Exception ex) {
