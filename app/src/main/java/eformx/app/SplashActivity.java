@@ -70,6 +70,132 @@ public class SplashActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        if (!isNetworkConnected()) {
+            showNoInternetSplashView();
+            return;
+        }
+
+        startSplashFlow();
+    }
+
+    private boolean isNetworkConnected() {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    android.net.Network network = cm.getActiveNetwork();
+                    if (network != null) {
+                        android.net.NetworkCapabilities capabilities = cm.getNetworkCapabilities(network);
+                        return capabilities != null && (capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+                                || capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+                                || capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET));
+                    }
+                } else {
+                    android.net.NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+                    return activeNetwork != null && activeNetwork.isConnected();
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private void showNoInternetSplashView() {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+
+            FrameLayout root = new FrameLayout(this);
+            root.setBackgroundColor(Color.parseColor("#F8FAFC"));
+
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setGravity(Gravity.CENTER);
+            card.setPadding(dpToPx(24), dpToPx(32), dpToPx(24), dpToPx(32));
+
+            TextView iconTv = new TextView(this);
+            iconTv.setText("📡");
+            iconTv.setTextSize(48);
+            iconTv.setGravity(Gravity.CENTER);
+            card.addView(iconTv);
+
+            TextView titleTv = new TextView(this);
+            titleTv.setText("इंटरनेट कनेक्शन आवश्यक है");
+            titleTv.setTextSize(20);
+            titleTv.setTextColor(Color.parseColor("#0F172A"));
+            titleTv.setTypeface(Typeface.DEFAULT_BOLD);
+            titleTv.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            titleParams.topMargin = dpToPx(16);
+            card.addView(titleTv, titleParams);
+
+            TextView msgTv = new TextView(this);
+            msgTv.setText("ऐप शुरू करने के लिए कृपया अपने फोन का मोबाइल डेटा या वाई-फ़ाई ऑन करें।");
+            msgTv.setTextSize(14);
+            msgTv.setTextColor(Color.parseColor("#64748B"));
+            msgTv.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams msgParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            msgParams.topMargin = dpToPx(8);
+            card.addView(msgTv, msgParams);
+
+            TextView retryBtn = new TextView(this);
+            retryBtn.setText("पुनः प्रयास करें (Retry)");
+            retryBtn.setTextSize(16);
+            retryBtn.setTextColor(Color.WHITE);
+            retryBtn.setTypeface(Typeface.DEFAULT_BOLD);
+            retryBtn.setGravity(Gravity.CENTER);
+            retryBtn.setPadding(dpToPx(32), dpToPx(14), dpToPx(32), dpToPx(14));
+
+            GradientDrawable btnBg = new GradientDrawable();
+            btnBg.setColor(Color.parseColor("#0052FF"));
+            btnBg.setCornerRadius(dpToPx(12));
+            retryBtn.setBackground(btnBg);
+
+            LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            btnParams.topMargin = dpToPx(28);
+            card.addView(retryBtn, btnParams);
+
+            retryBtn.setOnClickListener(v -> {
+                if (isNetworkConnected()) {
+                    startSplashFlow();
+                } else {
+                    android.widget.Toast.makeText(SplashActivity.this, "इंटरनेट अभी भी बंद है। कृपया डेटा ऑन करें।", android.widget.Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            TextView settingsBtn = new TextView(this);
+            settingsBtn.setText("नेटवर्क सेटिंग्स खोलें");
+            settingsBtn.setTextSize(14);
+            settingsBtn.setTextColor(Color.parseColor("#0052FF"));
+            settingsBtn.setGravity(Gravity.CENTER);
+            settingsBtn.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+            LinearLayout.LayoutParams setParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            setParams.topMargin = dpToPx(12);
+            card.addView(settingsBtn, setParams);
+
+            settingsBtn.setOnClickListener(v -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+                } catch (Exception e) {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_SETTINGS));
+                    } catch (Exception ignored) {}
+                }
+            });
+
+            FrameLayout.LayoutParams cardParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cardParams.gravity = Gravity.CENTER;
+            cardParams.setMargins(dpToPx(24), 0, dpToPx(24), 0);
+            root.addView(card, cardParams);
+
+            setContentView(root);
+        } catch (Exception e) {
+            startSplashFlow();
+        }
+    }
+
+    private void startSplashFlow() {
         checkAppInstallApi();
         showBrandingSplashScreen();
 
@@ -88,7 +214,6 @@ public class SplashActivity extends Activity {
         };
         splashHandler.postDelayed(splashRunnable, 1600);
 
-        // Failsafe timer: guarantees transition even if animations are disabled or delayed
         splashHandler.postDelayed(this::transitionFromSplash, 2200);
     }
 
@@ -1156,15 +1281,52 @@ public class SplashActivity extends Activity {
                     org.json.JSONObject json = new org.json.JSONObject(response.toString());
                     if (json.optBoolean("status", false) || json.optInt("status_code", 0) == 200) {
                         org.json.JSONObject data = json.optJSONObject("data");
-                        if (data != null && data.has("redirect_url")) {
-                            String urlString = data.optString("redirect_url", "").trim();
-                            if (!urlString.isEmpty()) {
-                                redirectUrl = urlString;
-                                getSharedPreferences("eformx_prefs", MODE_PRIVATE)
-                                        .edit()
-                                        .putString("redirect_url", redirectUrl)
-                                        .apply();
+                        if (data != null) {
+                            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+                            SharedPreferences.Editor editor = prefs.edit();
+
+                            // 1. Parse redirect_url
+                            if (data.has("redirect_url")) {
+                                String urlString = data.optString("redirect_url", "").trim();
+                                if (!urlString.isEmpty()) {
+                                    redirectUrl = urlString;
+                                    editor.putString("redirect_url", redirectUrl);
+                                }
                             }
+
+                            // 2. Parse version & compare with saved version
+                            if (data.has("version")) {
+                                String apiVersion = data.optString("version", "").trim();
+                                if (!apiVersion.isEmpty()) {
+                                    String savedVersion = prefs.getString("api_server_version", "");
+                                    if (savedVersion.isEmpty()) {
+                                        // First time saving
+                                        editor.putString("api_server_version", apiVersion);
+                                    } else if (!savedVersion.equalsIgnoreCase(apiVersion)) {
+                                        // Version changed! Mark cache flush needed
+                                        editor.putString("api_server_version", apiVersion);
+                                        editor.putBoolean("cache_flush_needed", true);
+                                    }
+                                }
+                            }
+
+                            // 3. Parse catche_url array (whitelist for caching)
+                            if (data.has("catche_url")) {
+                                org.json.JSONArray cacheArray = data.optJSONArray("catche_url");
+                                if (cacheArray != null) {
+                                    java.util.HashSet<String> cacheSet = new java.util.HashSet<>();
+                                    for (int i = 0; i < cacheArray.length(); i++) {
+                                        String cUrl = cacheArray.optString(i, "").trim();
+                                        if (!cUrl.isEmpty()) {
+                                            cacheSet.add(cUrl);
+                                        }
+                                    }
+                                    editor.putStringSet("catche_url_whitelist", cacheSet);
+                                    editor.putString("catche_url_json", cacheArray.toString());
+                                }
+                            }
+
+                            editor.apply();
                         }
                     }
                 }

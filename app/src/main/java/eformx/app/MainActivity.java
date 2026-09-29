@@ -39,6 +39,7 @@ import android.webkit.JavascriptInterface;
 import org.json.JSONObject;
 import java.util.Locale;
 import java.util.TimeZone;
+import eformx.app.BuildConfig;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
@@ -53,6 +54,14 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.content.FileProvider;
+import android.provider.MediaStore;
+import java.io.File;
+import com.google.android.play.core.appupdate.AppUpdateManager;
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory;
+import com.google.android.play.core.appupdate.AppUpdateInfo;
+import com.google.android.play.core.install.model.AppUpdateType;
+import com.google.android.play.core.install.model.UpdateAvailability;
 
 public class MainActivity extends ComponentActivity {
 
@@ -67,9 +76,11 @@ public class MainActivity extends ComponentActivity {
     private ActivityResultLauncher<String[]> locationPermissionLauncher;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     private AndroidBridge androidBridge;
-    private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isErrorState = false;
     private boolean hasLoadedAnyPageSuccessfully = false;
+    private Uri cameraImageUri;
+    private AppUpdateManager appUpdateManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     private final android.os.Handler loadingWatchdogHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable loadingWatchdogRunnable = () -> {
@@ -86,30 +97,38 @@ public class MainActivity extends ComponentActivity {
         fileChooserLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
-                    if (filePathCallback == null) return;
+                    if (filePathCallback == null)
+                        return;
                     Uri[] results = null;
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        String dataString = result.getData().getDataString();
-                        if (dataString != null) {
-                            results = new Uri[]{Uri.parse(dataString)};
-                        } else if (result.getData().getClipData() != null) {
-                            int count = result.getData().getClipData().getItemCount();
-                            results = new Uri[count];
-                            for (int i = 0; i < count; i++) {
-                                results[i] = result.getData().getClipData().getItemAt(i).getUri();
+                    if (result.getResultCode() == RESULT_OK) {
+                        if (result.getData() == null
+                                || (result.getData().getData() == null && result.getData().getClipData() == null)) {
+                            if (cameraImageUri != null) {
+                                results = new Uri[] { cameraImageUri };
+                            }
+                        } else {
+                            String dataString = result.getData().getDataString();
+                            if (dataString != null) {
+                                results = new Uri[] { Uri.parse(dataString) };
+                            } else if (result.getData().getClipData() != null) {
+                                int count = result.getData().getClipData().getItemCount();
+                                results = new Uri[count];
+                                for (int i = 0; i < count; i++) {
+                                    results[i] = result.getData().getClipData().getItemAt(i).getUri();
+                                }
                             }
                         }
                     }
                     filePathCallback.onReceiveValue(results);
                     filePathCallback = null;
-                }
-        );
+                });
 
         locationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestMultiplePermissions(),
                 result -> {
                     Boolean fineGranted = result.getOrDefault(android.Manifest.permission.ACCESS_FINE_LOCATION, false);
-                    Boolean coarseGranted = result.getOrDefault(android.Manifest.permission.ACCESS_COARSE_LOCATION, false);
+                    Boolean coarseGranted = result.getOrDefault(android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                            false);
                     if (fineGranted || coarseGranted) {
                         Toast.makeText(MainActivity.this, "Location permission granted", Toast.LENGTH_SHORT).show();
                         if (androidBridge != null) {
@@ -119,16 +138,18 @@ public class MainActivity extends ComponentActivity {
                         Toast.makeText(MainActivity.this, "Location permission denied", Toast.LENGTH_SHORT).show();
                     }
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && result.containsKey(android.Manifest.permission.POST_NOTIFICATIONS)) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                            && result.containsKey(android.Manifest.permission.POST_NOTIFICATIONS)) {
                         Boolean notifGranted = result.get(android.Manifest.permission.POST_NOTIFICATIONS);
                         if (Boolean.TRUE.equals(notifGranted)) {
-                            Toast.makeText(MainActivity.this, "Notification permission granted", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "Notification permission granted", Toast.LENGTH_SHORT)
+                                    .show();
                         } else {
-                            Toast.makeText(MainActivity.this, "Notification permission denied", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "Notification permission denied", Toast.LENGTH_SHORT)
+                                    .show();
                         }
                     }
-                }
-        );
+                });
 
         notificationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestPermission(),
@@ -138,25 +159,48 @@ public class MainActivity extends ComponentActivity {
                     } else {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                                 !shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS)) {
-                            Toast.makeText(MainActivity.this, "कृपया सेटिंग्स में जाकर नोटिफिकेशन चालू करें", Toast.LENGTH_LONG).show();
+                            Toast.makeText(MainActivity.this, "कृपया सेटिंग्स में जाकर नोटिफिकेशन चालू करें",
+                                    Toast.LENGTH_LONG).show();
                             openNotificationSettings();
                         } else {
-                            Toast.makeText(MainActivity.this, "Notification permission denied", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "Notification permission denied", Toast.LENGTH_SHORT)
+                                    .show();
                         }
                     }
-                }
-        );
+                });
 
         androidBridge = new AndroidBridge(this, locationPermissionLauncher);
         checkAndRequestAllPermissions();
 
+        // Auto-Cache Flush on App Version Bump or API Version Change
+        try {
+            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+            int currentVersionCode = BuildConfig.VERSION_CODE;
+            int lastSavedVersionCode = prefs.getInt("last_saved_version_code", -1);
+            boolean apiVersionChanged = prefs.getBoolean("cache_flush_needed", false);
+
+            if (lastSavedVersionCode != currentVersionCode || apiVersionChanged) {
+                prefs.edit()
+                        .putInt("last_saved_version_code", currentVersionCode)
+                        .putBoolean("cache_flush_needed", false)
+                        .apply();
+                if (webView != null) {
+                    webView.clearCache(true);
+                }
+                android.webkit.WebStorage.getInstance().deleteAllData();
+            }
+        } catch (Exception ignored) {
+        }
+
         // Ensure any old tracking notification is cancelled
         try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(
+                    android.content.Context.NOTIFICATION_SERVICE);
             if (nm != null) {
                 nm.cancel(2002);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
@@ -202,8 +246,7 @@ public class MainActivity extends ComponentActivity {
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         container.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+                ViewGroup.LayoutParams.MATCH_PARENT));
 
         topProgressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         topProgressBar.setMax(100);
@@ -265,7 +308,8 @@ public class MainActivity extends ComponentActivity {
         container.addView(fullScreenLoadingOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // Custom Branded Offline / Error Screen Overlay (Exact Match with User Screenshot)
+        // Custom Branded Offline / Error Screen Overlay (Exact Match with User
+        // Screenshot)
         errorOverlay = new FrameLayout(this);
         errorOverlay.setBackgroundColor(Color.parseColor("#F8FAFC"));
 
@@ -298,7 +342,8 @@ public class MainActivity extends ComponentActivity {
         badgeParams.bottomMargin = dpToPx(24);
 
         View wifiOffIconView = new View(this) {
-            private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            private final android.graphics.Paint paint = new android.graphics.Paint(
+                    android.graphics.Paint.ANTI_ALIAS_FLAG);
 
             @Override
             protected void onDraw(android.graphics.Canvas canvas) {
@@ -313,10 +358,12 @@ public class MainActivity extends ComponentActivity {
                 float cx = w / 2.0f;
                 float cy = h / 2.0f + dpToPx(4);
 
-                android.graphics.RectF r1 = new android.graphics.RectF(cx - dpToPx(22), cy - dpToPx(22), cx + dpToPx(22), cy + dpToPx(22));
+                android.graphics.RectF r1 = new android.graphics.RectF(cx - dpToPx(22), cy - dpToPx(22),
+                        cx + dpToPx(22), cy + dpToPx(22));
                 canvas.drawArc(r1, 215, 110, false, paint);
 
-                android.graphics.RectF r2 = new android.graphics.RectF(cx - dpToPx(14), cy - dpToPx(14), cx + dpToPx(14), cy + dpToPx(14));
+                android.graphics.RectF r2 = new android.graphics.RectF(cx - dpToPx(14), cy - dpToPx(14),
+                        cx + dpToPx(14), cy + dpToPx(14));
                 canvas.drawArc(r2, 220, 100, false, paint);
 
                 paint.setStyle(android.graphics.Paint.Style.FILL);
@@ -354,7 +401,7 @@ public class MainActivity extends ComponentActivity {
         errSubParams.bottomMargin = dpToPx(24);
         errorCard.addView(errSubTv, errSubParams);
 
-        // 4. Primary Button: "🔄  Try Again"
+        // 4. Primary Button: "🔄 Try Again"
         TextView retryBtn = new TextView(this);
         retryBtn.setText("🔄   Try Again");
         retryBtn.setTextSize(15);
@@ -375,7 +422,8 @@ public class MainActivity extends ComponentActivity {
                     webView.reload();
                 }
             } else {
-                Toast.makeText(MainActivity.this, "Still offline. Please check your connection.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Still offline. Please check your connection.", Toast.LENGTH_SHORT)
+                        .show();
             }
         });
         LinearLayout.LayoutParams retryBtnParams = new LinearLayout.LayoutParams(
@@ -383,7 +431,7 @@ public class MainActivity extends ComponentActivity {
         retryBtnParams.bottomMargin = dpToPx(20);
         errorCard.addView(retryBtn, retryBtnParams);
 
-        // 5. Divider Line: "─────  OR  ─────"
+        // 5. Divider Line: "───── OR ─────"
         LinearLayout dividerLayout = new LinearLayout(this);
         dividerLayout.setOrientation(LinearLayout.HORIZONTAL);
         dividerLayout.setGravity(Gravity.CENTER);
@@ -411,7 +459,7 @@ public class MainActivity extends ComponentActivity {
         dividerParams.bottomMargin = dpToPx(20);
         errorCard.addView(dividerLayout, dividerParams);
 
-        // 6. Secondary Button: "🌐  Check Connection"
+        // 6. Secondary Button: "🌐 Check Connection"
         TextView checkConnBtn = new TextView(this);
         checkConnBtn.setText("🌐   Check Connection");
         checkConnBtn.setTextSize(14);
@@ -439,7 +487,7 @@ public class MainActivity extends ComponentActivity {
         errContainerCardParams.setMargins(dpToPx(24), 0, dpToPx(24), 0);
         mainErrorLayout.addView(errorCard, errContainerCardParams);
 
-        // 7. Footer text at bottom: "🎧  Still having trouble? Contact support"
+        // 7. Footer text at bottom: "🎧 Still having trouble? Contact support"
         TextView supportFooterTv = new TextView(this);
         supportFooterTv.setText("🎧   Still having trouble? Contact support");
         supportFooterTv.setTextSize(13);
@@ -449,7 +497,8 @@ public class MainActivity extends ComponentActivity {
 
         supportFooterTv.setOnClickListener(v -> {
             try {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/?text=Hi%20Support,%20I%20am%20facing%20connection%20issues%20on%20eFormX%20app"));
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(
+                        "https://wa.me/?text=Hi%20Support,%20I%20am%20facing%20connection%20issues%20on%20eFormX%20app"));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(intent);
             } catch (Exception e) {
@@ -468,16 +517,13 @@ public class MainActivity extends ComponentActivity {
         container.addView(errorOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-
-
         setContentView(container);
 
         applyStatusBarAppearance();
 
         ViewCompat.setOnApplyWindowInsetsListener(container, (v, windowInsets) -> {
             Insets insets = windowInsets.getInsets(
-                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
-            );
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
             return windowInsets;
         });
@@ -524,7 +570,8 @@ public class MainActivity extends ComponentActivity {
             private void injectSharePolyfill(WebView view) {
                 String token = getSharedPreferences("eformx_prefs", MODE_PRIVATE).getString("fcm_token", "");
                 String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                if (deviceId == null) deviceId = "";
+                if (deviceId == null)
+                    deviceId = "";
 
                 String js = "if (window.AndroidShare) {" +
                         "  navigator.share = function(data) {" +
@@ -544,7 +591,8 @@ public class MainActivity extends ComponentActivity {
                         "}" +
                         "try {" +
                         "  Object.defineProperty(window.Notification, 'permission', {" +
-                        "    get: function() { return (window.Android && window.Android.hasNotificationPermission && window.Android.hasNotificationPermission()) ? 'granted' : 'default'; }," +
+                        "    get: function() { return (window.Android && window.Android.hasNotificationPermission && window.Android.hasNotificationPermission()) ? 'granted' : 'default'; },"
+                        +
                         "    configurable: true" +
                         "  });" +
                         "} catch(e) {}" +
@@ -552,7 +600,8 @@ public class MainActivity extends ComponentActivity {
                         "  if (window.Android && window.Android.openNotificationPermission) {" +
                         "    window.Android.openNotificationPermission();" +
                         "  }" +
-                        "  var perm = (window.Android && window.Android.hasNotificationPermission && window.Android.hasNotificationPermission()) ? 'granted' : 'default';" +
+                        "  var perm = (window.Android && window.Android.hasNotificationPermission && window.Android.hasNotificationPermission()) ? 'granted' : 'default';"
+                        +
                         "  if (typeof cb === 'function') cb(perm);" +
                         "  return Promise.resolve(perm);" +
                         "};" +
@@ -564,9 +613,11 @@ public class MainActivity extends ComponentActivity {
                         "    try {" +
                         "      var h = a.getAttribute('href');" +
                         "      var did = window.device_id || '';" +
-                        "      if (h && did && (h.indexOf('http://') === 0 || h.indexOf('https://') === 0 || h.indexOf('eformx://') === 0) && h.indexOf('platform_refrence=') === -1) {" +
+                        "      if (h && did && (h.indexOf('http://') === 0 || h.indexOf('https://') === 0 || h.indexOf('eformx://') === 0) && h.indexOf('platform_refrence=') === -1) {"
+                        +
                         "        var sep = h.indexOf('?') !== -1 ? '&' : '?';" +
-                        "        a.setAttribute('href', h + sep + 'platform_refrence=android&platform_refrence_id=' + encodeURIComponent(did));" +
+                        "        a.setAttribute('href', h + sep + 'platform_refrence=android&platform_refrence_id=' + encodeURIComponent(did));"
+                        +
                         "      }" +
                         "    } catch(e) {}" +
                         "  }" +
@@ -594,16 +645,19 @@ public class MainActivity extends ComponentActivity {
             }
 
             @Override
-            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler,
+                    android.net.http.SslError error) {
                 handler.proceed();
             }
 
             @Override
-            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view,
+                    android.webkit.WebResourceRequest request) {
                 if (request != null && request.getUrl() != null) {
                     String url = request.getUrl().toString();
                     if (isShortCallbackUrl(url)) {
-                        return new android.webkit.WebResourceResponse("text/html", "UTF-8", new java.io.ByteArrayInputStream(new byte[0]));
+                        return new android.webkit.WebResourceResponse("text/html", "UTF-8",
+                                new java.io.ByteArrayInputStream(new byte[0]));
                     }
                     if (url.startsWith("eformx://") || url.startsWith("eformx:/")) {
                         final String targetUrl = parseEformxUrl(url);
@@ -614,13 +668,15 @@ public class MainActivity extends ComponentActivity {
                             }
                             if (webView != null) {
                                 String currentUrl = webView.getUrl();
-                                if (currentUrl == null || !currentUrl.replaceAll("/$", "").equalsIgnoreCase(targetUrl.replaceAll("/$", ""))) {
+                                if (currentUrl == null || !currentUrl.replaceAll("/$", "")
+                                        .equalsIgnoreCase(targetUrl.replaceAll("/$", ""))) {
                                     webView.stopLoading();
                                     webView.loadUrl(targetUrl);
                                 }
                             }
                         });
-                        return new android.webkit.WebResourceResponse("text/html", "UTF-8", new java.io.ByteArrayInputStream(new byte[0]));
+                        return new android.webkit.WebResourceResponse("text/html", "UTF-8",
+                                new java.io.ByteArrayInputStream(new byte[0]));
                     }
                 }
                 return super.shouldInterceptRequest(view, request);
@@ -735,7 +791,8 @@ public class MainActivity extends ComponentActivity {
             }
 
             @Override
-            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
+            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request,
+                    android.webkit.WebResourceError error) {
                 if (topProgressBar != null) {
                     topProgressBar.setVisibility(View.GONE);
                 }
@@ -751,7 +808,9 @@ public class MainActivity extends ComponentActivity {
                         return;
                     }
                     if (request.isForMainFrame()) {
-                        String errorMsg = (error != null && error.getDescription() != null) ? error.getDescription().toString() : "";
+                        String errorMsg = (error != null && error.getDescription() != null)
+                                ? error.getDescription().toString()
+                                : "";
                         if (errorMsg.contains("ERR_CACHE_MISS") && isNetworkAvailable()) {
                             view.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
                             view.loadUrl(url);
@@ -825,8 +884,10 @@ public class MainActivity extends ComponentActivity {
                 }
                 super.onProgressChanged(view, newProgress);
             }
+
             @Override
-            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                    android.os.Message resultMsg) {
                 WebView newWebView = new WebView(MainActivity.this);
                 newWebView.setWebViewClient(new WebViewClient() {
                     @Override
@@ -834,6 +895,7 @@ public class MainActivity extends ComponentActivity {
                         handleUrl(MainActivity.this.webView, url);
                         return true;
                     }
+
                     @Override
                     public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
                         if (request != null && request.getUrl() != null) {
@@ -849,15 +911,38 @@ public class MainActivity extends ComponentActivity {
             }
 
             @Override
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams) {
                 if (MainActivity.this.filePathCallback != null) {
                     MainActivity.this.filePathCallback.onReceiveValue(null);
                 }
                 MainActivity.this.filePathCallback = filePathCallback;
 
-                Intent intent = fileChooserParams.createIntent();
+                Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
                 try {
-                    fileChooserLauncher.launch(intent);
+                    File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+                    File photoFile = File.createTempFile("CAM_" + System.currentTimeMillis() + "_", ".jpg", storageDir);
+                    cameraImageUri = FileProvider.getUriForFile(
+                            MainActivity.this,
+                            getPackageName() + ".fileprovider",
+                            photoFile);
+                    takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+                } catch (Exception e) {
+                    cameraImageUri = null;
+                }
+
+                Intent contentSelectionIntent = fileChooserParams.createIntent();
+                Intent[] intentArray = (takePictureIntent != null && cameraImageUri != null)
+                        ? new Intent[] { takePictureIntent }
+                        : new Intent[0];
+
+                Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+                chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
+                chooserIntent.putExtra(Intent.EXTRA_TITLE, "Select File or Capture Photo");
+                chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, intentArray);
+
+                try {
+                    fileChooserLauncher.launch(chooserIntent);
                 } catch (Exception e) {
                     MainActivity.this.filePathCallback = null;
                     Toast.makeText(MainActivity.this, "Cannot open file chooser", Toast.LENGTH_LONG).show();
@@ -869,7 +954,36 @@ public class MainActivity extends ComponentActivity {
 
         webView.setDownloadListener(new DownloadListener() {
             @Override
-            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType,
+                    long contentLength) {
+                if (url == null)
+                    return;
+
+                if (url.startsWith("data:")) {
+                    if (androidBridge != null) {
+                        String mime = mimeType != null ? mimeType : "application/pdf";
+                        String filename = URLUtil.guessFileName(url, contentDisposition, mime);
+                        androidBridge.saveBase64File(url, mime, filename);
+                    }
+                    return;
+                }
+
+                if (url.startsWith("blob:")) {
+                    String mime = mimeType != null ? mimeType : "application/pdf";
+                    String filename = URLUtil.guessFileName(url, contentDisposition, mime);
+                    String js = "fetch('" + url + "').then(r => r.blob()).then(blob => {" +
+                            "  var reader = new FileReader();" +
+                            "  reader.onloadend = function() {" +
+                            "    if (window.Android && window.Android.saveBase64File) {" +
+                            "      window.Android.saveBase64File(reader.result, '" + mime + "', '" + filename + "');" +
+                            "    }" +
+                            "  };" +
+                            "  reader.readAsDataURL(blob);" +
+                            "}).catch(e => console.error(e));";
+                    webView.evaluateJavascript(js, null);
+                    return;
+                }
+
                 try {
                     DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
                     request.setMimeType(mimeType);
@@ -880,7 +994,8 @@ public class MainActivity extends ComponentActivity {
                     request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
                     request.allowScanningByMediaScanner();
                     request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,
+                            URLUtil.guessFileName(url, contentDisposition, mimeType));
 
                     DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                     if (dm != null) {
@@ -888,7 +1003,8 @@ public class MainActivity extends ComponentActivity {
                         Toast.makeText(getApplicationContext(), "Downloading File...", Toast.LENGTH_LONG).show();
                     }
                 } catch (Exception e) {
-                    Toast.makeText(getApplicationContext(), "Download Failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getApplicationContext(), "Download Failed: " + e.getMessage(), Toast.LENGTH_SHORT)
+                            .show();
                 }
             }
         });
@@ -904,7 +1020,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void handleNotificationOrDeepLinkIntent(Intent intent) {
-        if (intent == null) return;
+        if (intent == null)
+            return;
 
         if (intent.hasExtra("target_url")) {
             String targetUrl = appendPlatformParams(intent.getStringExtra("target_url"));
@@ -930,7 +1047,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void handleIntentData(String rawUrl) {
-        if (rawUrl == null || webView == null) return;
+        if (rawUrl == null || webView == null)
+            return;
 
         if (isShortCallbackUrl(rawUrl)) {
             return;
@@ -959,11 +1077,46 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean isExternalBrowserRequested(String url) {
-        if (url == null) return false;
+        if (url == null)
+            return false;
         boolean hasExternal = url.contains("browser=external") || url.contains("browser=extrunal");
         boolean hasCallbackApp = url.contains("calback=app") || url.contains("callback=app");
         boolean hasShareLink = url.contains("share_link=true");
         return hasExternal && !hasCallbackApp && !hasShareLink;
+    }
+
+    public void openAppUrl(String rawUrl) {
+        runOnUiThread(() -> {
+            if (rawUrl == null || rawUrl.trim().isEmpty()) {
+                Intent bringToFront = new Intent(this, MainActivity.class);
+                bringToFront.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(bringToFront);
+                return;
+            }
+
+            String targetUrl = rawUrl.trim();
+            if (targetUrl.startsWith("eformx://") || targetUrl.startsWith("eformx:/")) {
+                return;
+            }
+
+            if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+                targetUrl = "https://" + targetUrl;
+            }
+
+            try {
+                Uri uri = Uri.parse(targetUrl);
+                if (uri.getQueryParameter("utm_source") == null) {
+                    targetUrl = uri.buildUpon().appendQueryParameter("utm_source", "android").build().toString();
+                }
+            } catch (Exception ignored) {
+            }
+
+            if (webView != null) {
+                targetUrl = appendPlatformParams(targetUrl);
+                applySmartCacheStrategy(targetUrl);
+                webView.loadUrl(targetUrl);
+            }
+        });
     }
 
     public void showProcessLoader(String page) {
@@ -989,7 +1142,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private String appendPlatformParams(String url) {
-        if (url == null || url.trim().isEmpty()) return url;
+        if (url == null || url.trim().isEmpty())
+            return url;
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             return url;
         }
@@ -1022,7 +1176,8 @@ public class MainActivity extends ComponentActivity {
 
         try {
             stripped = java.net.URLDecoder.decode(stripped, "UTF-8");
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         int httpsIndex = stripped.indexOf("https://");
         int httpIndex = stripped.indexOf("http://");
@@ -1044,7 +1199,8 @@ public class MainActivity extends ComponentActivity {
         }
 
         // If stripped already contains a valid host like apply.eformx.com or eformx.com
-        if (stripped.startsWith("apply.eformx.com") || stripped.startsWith("eformx.com") || stripped.startsWith("www.eformx.com")
+        if (stripped.startsWith("apply.eformx.com") || stripped.startsWith("eformx.com")
+                || stripped.startsWith("www.eformx.com")
                 || stripped.matches("^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*|\\?.*)?$")) {
             return appendPlatformParams("https://" + stripped);
         }
@@ -1057,62 +1213,79 @@ public class MainActivity extends ComponentActivity {
         return appendPlatformParams(baseUrl + stripped);
     }
 
-    private void applySmartCacheStrategy(String url) {
-        if (url == null || webView == null) return;
-        WebSettings settings = webView.getSettings();
-
-        if (!isNetworkAvailable()) {
-            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-            return;
-        }
-
+    private boolean isUrlInCacheWhitelist(String url) {
+        if (url == null || url.trim().isEmpty())
+            return false;
         try {
-            Uri uri = Uri.parse(url);
-            String versionParam = uri.getQueryParameter("VERSION");
-            if (versionParam == null) {
-                versionParam = uri.getQueryParameter("version");
-            }
-            if (versionParam == null) {
-                versionParam = uri.getQueryParameter("cache");
-            }
-            if (versionParam == null) {
-                versionParam = uri.getQueryParameter("v");
-            }
-            if (versionParam == null) {
-                versionParam = uri.getQueryParameter("ver");
-            }
+            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+            java.util.Set<String> whitelist = prefs.getStringSet("catche_url_whitelist", null);
+            if (whitelist != null && !whitelist.isEmpty()) {
+                String cleanUrl = url.trim().toLowerCase();
+                for (String cachedPattern : whitelist) {
+                    if (cachedPattern == null || cachedPattern.trim().isEmpty())
+                        continue;
+                    String cleanPattern = cachedPattern.trim().toLowerCase();
 
-            android.content.SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
-            String activeCacheId = prefs.getString("cache_ver_global", null);
-
-            if (versionParam != null) {
-                if (activeCacheId == null) {
-                    // First time install / no active cache: Live fetch & save active cache ID
-                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                    prefs.edit().putString("cache_ver_global", versionParam).apply();
-                } else if (versionParam.equalsIgnoreCase(activeCacheId)) {
-                    // Active cache version matches: Instant load from disk cache in milliseconds
-                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-                } else {
-                    // New/Updated cache ID received: Keep current session on disk cache for instant UI
-                    // Save new version to pending slot so it applies seamlessly on next app launch
-                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-                    prefs.edit().putString("cache_ver_pending", versionParam).apply();
+                    // 1. Direct or prefix match
+                    if (cleanUrl.equals(cleanPattern) || cleanUrl.startsWith(cleanPattern)
+                            || cleanPattern.startsWith(cleanUrl)) {
+                        return true;
+                    }
+                    // 2. Domain / Host match
+                    try {
+                        Uri cachedUri = Uri.parse(cleanPattern);
+                        Uri currentUri = Uri.parse(cleanUrl);
+                        if (cachedUri.getHost() != null && currentUri.getHost() != null) {
+                            if (cachedUri.getHost().equalsIgnoreCase(currentUri.getHost())) {
+                                String cachedPath = cachedUri.getPath();
+                                String currentPath = currentUri.getPath();
+                                if (cachedPath == null || cachedPath.isEmpty() || cachedPath.equals("/")) {
+                                    return true;
+                                }
+                                if (currentPath != null && currentPath.startsWith(cachedPath)) {
+                                    return true;
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
                 }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    private void applySmartCacheStrategy(String url) {
+        if (url == null || webView == null)
+            return;
+        try {
+            WebSettings settings = webView.getSettings();
+            if (!isNetworkAvailable()) {
+                settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                return;
+            }
+
+            // Important: Only cache websites listed in catche_url
+            if (isUrlInCacheWhitelist(url)) {
+                // In catche_url: Store and aggressively load from disk cache for super-fast
+                // speed!
+                settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
             } else {
-                if (activeCacheId != null) {
-                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-                } else {
-                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                }
+                // Not in catche_url: Load fresh live data, do not store in cache
+                settings.setCacheMode(WebSettings.LOAD_DEFAULT);
             }
         } catch (Exception e) {
-            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            try {
+                webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+            } catch (Exception ignored) {
+            }
         }
     }
 
     private void showCustomErrorPage(WebView view, String failingUrl, String errorMsg) {
-        if (view == null) return;
+        if (view == null)
+            return;
         isErrorState = true;
         if (fullScreenLoadingOverlay != null) {
             fullScreenLoadingOverlay.setVisibility(View.GONE);
@@ -1123,7 +1296,8 @@ public class MainActivity extends ComponentActivity {
                 ? failingUrl
                 : defaultUrl;
         String cleanErrorMsg = (errorMsg != null && !errorMsg.isEmpty()) ? errorMsg : "";
-        String errorBadgeHtml = !cleanErrorMsg.isEmpty() ? "<div class=\"error-badge\">" + cleanErrorMsg + "</div>" : "";
+        String errorBadgeHtml = !cleanErrorMsg.isEmpty() ? "<div class=\"error-badge\">" + cleanErrorMsg + "</div>"
+                : "";
 
         String htmlData = "<!DOCTYPE html>"
                 + "<html lang=\"en\">"
@@ -1162,8 +1336,9 @@ public class MainActivity extends ComponentActivity {
                 + "    </div>"
                 + "    <h2>App Not Loaded</h2>"
                 + "    <p>Could not connect to the server. Please check your internet connection and try again.</p>"
-                +      errorBadgeHtml
-                + "    <button class=\"btn-retry\" onclick=\"if(window.AndroidShare && window.AndroidShare.reloadApp){window.AndroidShare.reloadApp();}else{location.href='" + defaultUrl.replace("'", "\\'") + "';}\">"
+                + errorBadgeHtml
+                + "    <button class=\"btn-retry\" onclick=\"if(window.AndroidShare && window.AndroidShare.reloadApp){window.AndroidShare.reloadApp();}else{location.href='"
+                + defaultUrl.replace("'", "\\'") + "';}\">"
                 + "      <svg viewBox=\"0 0 24 24\"><path d=\"M23 4v6h-6M1 20v-6h6\"></path><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"></path></svg>"
                 + "      <span>Reload</span>"
                 + "    </button>"
@@ -1179,7 +1354,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private String convertToWhatsappScheme(String rawUrl) {
-        if (rawUrl == null) return rawUrl;
+        if (rawUrl == null)
+            return rawUrl;
         if (rawUrl.startsWith("whatsapp://")) {
             return rawUrl;
         }
@@ -1214,7 +1390,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean handleUrl(WebView view, String rawUrl) {
-        if (rawUrl == null) return false;
+        if (rawUrl == null)
+            return false;
         final String url = appendPlatformParams(rawUrl);
         applySmartCacheStrategy(url);
 
@@ -1231,7 +1408,8 @@ public class MainActivity extends ComponentActivity {
                         directIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(directIntent);
                     } catch (Exception ex) {
-                        Toast.makeText(MainActivity.this, "WhatsApp is not installed on this device", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "WhatsApp is not installed on this device",
+                                Toast.LENGTH_SHORT).show();
                     }
                 }
             });
@@ -1282,20 +1460,22 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean isShortCallbackUrl(String url) {
-        if (url == null) return false;
+        if (url == null)
+            return false;
         return url.startsWith("eformx:/?calback=app") ||
-               url.startsWith("eformx://?calback=app") ||
-               url.startsWith("eformx:?calback=app") ||
-               url.startsWith("eformx:/?callback=app") ||
-               url.startsWith("eformx://?callback=app") ||
-               url.startsWith("eformx:?callback=app") ||
-               url.equals("eformx://") ||
-               url.equals("eformx:/") ||
-               url.equals("eformx:");
+                url.startsWith("eformx://?calback=app") ||
+                url.startsWith("eformx:?calback=app") ||
+                url.startsWith("eformx:/?callback=app") ||
+                url.startsWith("eformx://?callback=app") ||
+                url.startsWith("eformx:?callback=app") ||
+                url.equals("eformx://") ||
+                url.equals("eformx:/") ||
+                url.equals("eformx:");
     }
 
     private boolean handleNonHttpScheme(String url) {
-        if (url == null || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("about:") || url.startsWith("javascript:")) {
+        if (url == null || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("about:")
+                || url.startsWith("javascript:")) {
             return false;
         }
         if (url.startsWith("eformx://") || url.startsWith("eformx:/")) {
@@ -1319,7 +1499,8 @@ public class MainActivity extends ComponentActivity {
                     fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(fallbackIntent);
                 } catch (Exception ex) {
-                    Toast.makeText(MainActivity.this, "No app available to handle this link", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "No app available to handle this link", Toast.LENGTH_SHORT)
+                            .show();
                 }
             }
         });
@@ -1340,11 +1521,13 @@ public class MainActivity extends ComponentActivity {
             boolean isCallAnswer = intent.getBooleanExtra("is_call_answer", false);
             if (notifId != -1) {
                 try {
-                    android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                    android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(
+                            Context.NOTIFICATION_SERVICE);
                     if (nm != null) {
                         nm.cancel(notifId);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
             if (isCallAnswer || notifId != -1) {
                 MyFirebaseMessagingService.stopAllMediaAndTTS(this);
@@ -1364,7 +1547,8 @@ public class MainActivity extends ComponentActivity {
                         shareContent += text;
                     }
                     if (url != null && !url.isEmpty()) {
-                        if (!shareContent.isEmpty()) shareContent += "\n";
+                        if (!shareContent.isEmpty())
+                            shareContent += "\n";
                         shareContent += url;
                     }
                     if (shareContent.isEmpty() && title != null) {
@@ -1372,7 +1556,8 @@ public class MainActivity extends ComponentActivity {
                     }
                     shareIntent.putExtra(Intent.EXTRA_SUBJECT, title != null ? title : "");
                     shareIntent.putExtra(Intent.EXTRA_TEXT, shareContent);
-                    Intent chooser = Intent.createChooser(shareIntent, title != null && !title.isEmpty() ? title : "Share via");
+                    Intent chooser = Intent.createChooser(shareIntent,
+                            title != null && !title.isEmpty() ? title : "Share via");
                     chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(chooser);
                 } catch (Exception e) {
@@ -1386,7 +1571,8 @@ public class MainActivity extends ComponentActivity {
             runOnUiThread(() -> {
                 if (webView != null) {
                     if (!isNetworkAvailable()) {
-                        Toast.makeText(MainActivity.this, "इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया इंटरनेट चालू करें।", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया इंटरनेट चालू करें।",
+                                Toast.LENGTH_SHORT).show();
                         return;
                     }
                     isErrorState = false;
@@ -1435,8 +1621,7 @@ public class MainActivity extends ComponentActivity {
             if (cm != null) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                     NetworkCapabilities capabilities = cm.getNetworkCapabilities(cm.getActiveNetwork());
-                    return capabilities != null && (
-                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    return capabilities != null && (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
                             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
                             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
                 } else {
@@ -1536,7 +1721,8 @@ public class MainActivity extends ComponentActivity {
             return;
         }
         String currentUrl = (webView != null) ? webView.getUrl() : null;
-        if (currentUrl != null && (currentUrl.startsWith("data:") || currentUrl.contains("error") || currentUrl.contains("android=exit"))) {
+        if (currentUrl != null && (currentUrl.startsWith("data:") || currentUrl.contains("error")
+                || currentUrl.contains("android=exit"))) {
             showExitConfirmationDialog();
             return;
         }
@@ -1562,7 +1748,8 @@ public class MainActivity extends ComponentActivity {
                 android.webkit.WebHistoryItem item = history.getItemAtIndex(i);
                 if (item != null) {
                     String url = item.getUrl();
-                    if (url != null && !url.startsWith("data:") && !url.contains("error") && !url.contains("about:blank")) {
+                    if (url != null && !url.startsWith("data:") && !url.contains("error")
+                            && !url.contains("about:blank")) {
                         targetStep = i - currentIndex;
                         break;
                     }
@@ -1592,11 +1779,36 @@ public class MainActivity extends ComponentActivity {
     protected void onResume() {
         super.onResume();
         applyStatusBarAppearance();
+        checkGooglePlayAppUpdate();
+    }
+
+    public void checkGooglePlayAppUpdate() {
+        try {
+            if (appUpdateManager == null) {
+                appUpdateManager = AppUpdateManagerFactory.create(this);
+            }
+            com.google.android.gms.tasks.Task<AppUpdateInfo> appUpdateInfoTask = appUpdateManager.getAppUpdateInfo();
+            appUpdateInfoTask.addOnSuccessListener(appUpdateInfo -> {
+                if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
+                        && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
+                    try {
+                        appUpdateManager.startUpdateFlowForResult(
+                                appUpdateInfo,
+                                AppUpdateType.IMMEDIATE,
+                                this,
+                                9001);
+                    } catch (Exception ignored) {
+                    }
+                }
+            });
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
             MyFirebaseMessagingService.muteSoundOnly(this);
             return true;
         }
@@ -1613,20 +1825,27 @@ public class MainActivity extends ComponentActivity {
             Intent intent = new Intent();
 
             if (manufacturer.contains("xiaomi") || manufacturer.contains("redmi")) {
-                intent.setComponent(new android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"));
+                intent.setComponent(new android.content.ComponentName("com.miui.securitycenter",
+                        "com.miui.permcenter.autostart.AutoStartManagementActivity"));
             } else if (manufacturer.contains("oppo")) {
-                intent.setComponent(new android.content.ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"));
+                intent.setComponent(new android.content.ComponentName("com.coloros.safecenter",
+                        "com.coloros.safecenter.permission.startup.StartupAppListActivity"));
             } else if (manufacturer.contains("vivo")) {
-                intent.setComponent(new android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"));
+                intent.setComponent(new android.content.ComponentName("com.vivo.permissionmanager",
+                        "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"));
             } else if (manufacturer.contains("huawei") || manufacturer.contains("honor")) {
-                intent.setComponent(new android.content.ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"));
+                intent.setComponent(new android.content.ComponentName("com.huawei.systemmanager",
+                        "com.huawei.systemmanager.optimize.process.ProtectActivity"));
             } else if (manufacturer.contains("letv")) {
-                intent.setComponent(new android.content.ComponentName("com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity"));
+                intent.setComponent(new android.content.ComponentName("com.letv.android.letvsafe",
+                        "com.letv.android.letvsafe.AutobootManageActivity"));
             } else if (manufacturer.contains("asus")) {
-                intent.setComponent(new android.content.ComponentName("com.asus.mobilemanager", "com.asus.mobilemanager.entry.FunctionActivity"));
+                intent.setComponent(new android.content.ComponentName("com.asus.mobilemanager",
+                        "com.asus.mobilemanager.entry.FunctionActivity"));
             }
 
-            if (intent.getComponent() != null && getPackageManager().queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY).size() > 0) {
+            if (intent.getComponent() != null && getPackageManager()
+                    .queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY).size() > 0) {
                 startActivity(intent);
             }
         } catch (Exception e) {
@@ -1659,7 +1878,8 @@ public class MainActivity extends ComponentActivity {
     public void requestNotificationPermissionExplicit() {
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                if (checkSelfPermission(
+                        android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS);
                     return;
                 }
@@ -1682,16 +1902,19 @@ public class MainActivity extends ComponentActivity {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (!NotificationManagerCompat.from(this).areNotificationsEnabled() ||
-                        checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        checkSelfPermission(
+                                android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS);
                 }
             }
 
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (checkSelfPermission(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
             }
 
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (checkSelfPermission(
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
             }
 
@@ -1704,7 +1927,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void applyStatusBarAppearance() {
-        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(),
+                getWindow().getDecorView());
         if (insetsController != null) {
             insetsController.show(WindowInsetsCompat.Type.statusBars());
             insetsController.setAppearanceLightStatusBars(true);

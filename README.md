@@ -10,10 +10,12 @@ An ultra-fast, professional, hardware-accelerated Android WebView application fo
 - **GPU Hardware Layer Acceleration:** Uses `View.LAYER_TYPE_HARDWARE` on WebView for 60fps smooth scrolling and instant page rendering.
 - **Instant Top Progress Bar:** Sleek 2.5dp horizontal progress bar (`#4F46E5`) at the top of the WebView providing immediate 0ms visual tactile response on link clicks before page rendering begins.
 - **Automatic Device Parameter Enrichment:** Transparently appends `platform_refrence=android&platform_refrence_id=<android_id>` to all in-app, deep link, and external browser navigation URLs.
-- **Smart Memory Caching:** `WebSettings.LOAD_DEFAULT` optimized with DOM Storage, Web Database, and Cookie Persistence for high-speed dynamic loading.
+- **Selective Whitelist Disk Caching:** Aggressively stores and loads pages from disk cache (`LOAD_CACHE_ELSE_NETWORK`) ONLY for URLs specified in the server's `catche_url` whitelist for instant 0ms launch speed. Non-whitelisted URLs load live fresh data.
+- **Auto Cache Flush on Version Change:** Automatically clears disk cache and web storage whenever the server API `version` or APK version code changes.
+- **Startup Network Gate:** Verifies network connectivity on launch; displays native Hindi/English retry card if internet is disconnected before starting splash API flow.
 - **HTML5 Geolocation Support:** Hardware-accelerated geolocation enabled with custom `WebChromeClient` callback (`onGeolocationPermissionsShowPrompt`) for seamless `navigator.geolocation.getCurrentPosition(...)` calls.
 - **Native GPS Hardware Location Provider:** Direct native satellite fix (`ACCESS_FINE_LOCATION`) query to fetch high-precision coordinates instantly for web forms and maps.
-- **Dynamic URL Routing on Launch:** `SplashActivity` asynchronously checks `https://api.eformx.in/?api=install/app` and dynamically loads the server's `redirect_url` into the WebView.
+- **Dynamic API Routing & Whitelist Sync on Launch:** `SplashActivity` asynchronously checks `https://api.eformx.in/?api=install/app`, syncing `redirect_url`, `version`, and `catche_url` whitelist array into `SharedPreferences`.
 
 ---
 
@@ -28,7 +30,7 @@ Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GP
 | **`Android.getDeviceId()`** | None | `String` | Returns unique Android ID string (`Settings.Secure.ANDROID_ID`) | `let id = Android.getDeviceId();`                                         |
 | **`Android.getAppVersion()`** | None | `String` | Returns App Version Name (e.g. `"1.5"`) | `let ver = Android.getAppVersion();`                                      |
 | **`Android.getPackageName()`** | None | `String` | Returns Package Identifier (`"eformx.app"`) | `let pkg = Android.getPackageName();`                                     |
-| **`Android.getIpAddress()`** | None | `String` | Returns device local IPv4 address string (e.g. `"192.168.1.35"`) | `let ip = Android.getIpAddress();`                                        |
+| **`Android.getIpAddress()`** | None | `String` | Returns device IPv6 address string (e.g. `"2409:4050:..."`, with IPv4 fallback) | `let ip = Android.getIpAddress();`                                        |
 | **`Android.getNetworkType()`** | None | `String` | Returns network type (`"WIFI"`, `"CELLULAR_MOBILE"`, `"OFFLINE"`) | `let netType = Android.getNetworkType();`                                 |
 | **`Android.getNetworkOperator()`** | None | `String` | Returns SIM carrier operator name (e.g. `"Jio"`, `"Airtel"`) | `let op = Android.getNetworkOperator();`                                  |
 | **`Android.isNetworkAvailable()`** | None | `boolean` | Returns active internet connection state (`true`/`false`) | `let online = Android.isNetworkAvailable();`                              |
@@ -41,6 +43,15 @@ Exposes `Android` object to WebView JavaScript allowing web pages to retrieve GP
 | **`Android.exitApp()`** | None | `void` | Triggers the native eFormX Exit Confirmation Dialog directly | `Android.exitApp();`                                                      |
 | **`Android.openLocationPermission()`** | None | `void` | Prompts system location permission dialog (`ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`) | `Android.openLocationPermission();`                                       |
 | **`Android.showProcessLoader(page)`** | `page` (String, optional) | `void` | Triggers native full-screen 'Processing your request...' loading overlay and top progress bar | `Android.showProcessLoader('property');`                                  |
+| **`Android.openBrowser(url)`** | `url` (String) | `void` | Opens URL in Chrome Custom Tabs or phone's default external browser | `Android.openBrowser('https://example.com');`                            |
+| **`Android.openApp(url)`** | `url` (String, optional) | `void` | If URL provided (`https://...`), loads inside App WebView. If empty (`""`), brings app to foreground without reloading | `Android.openApp('https://eformx.com/dashboard');` <br/> `Android.openApp('');` |
+| **`Android.SafeScreen(enable)`** | `enable` (boolean) | `void` | Blocks screenshots and screen recording via `FLAG_SECURE` (`true` to secure, `false` to unsecure) | `Android.SafeScreen(true);`                                               |
+| **`Android.vibrate(ms)`** | `ms` (long, optional) | `void` | Triggers native haptic vibration feedback (defaults to 50ms) | `Android.vibrate(100);` <br/> `Android.vibrate();`                        |
+| **`Android.copyToClipboard(text)`** | `text` (String) | `void` | Reliably copies text to device clipboard via native ClipboardManager | `Android.copyToClipboard('eFormX-12345');`                                |
+| **`Android.getFromClipboard()`** | None | `String` | Retrieves current text content from device clipboard | `let copied = Android.getFromClipboard();`                              |
+| **`Android.showToast(message)`** | `message` (String) | `void` | Displays native Android Toast pop-up message | `Android.showToast('Application Saved!');`                               |
+| **`Android.saveBase64File(base64, mime, name)`** | `base64`, `mime`, `name` | `void` | Decodes base64 and saves file directly into device Downloads folder | `Android.saveBase64File(pdfBase64, 'application/pdf', 'invoice.pdf');`   |
+| **`Android.checkForAppUpdate()`** | None | `void` | Prompts Google Play In-App Update flow if a new version is released on Play Store | `Android.checkForAppUpdate();`                                            |
 | **`AndroidShare.share(title, text, url)`** | `title`, `text`, `url` (Strings) | `void` | Triggers native Android system Share Sheet intent to share links/text via WhatsApp, Email, Messages, etc. | `AndroidShare.share('eFormX', 'Check out eFormX', 'https://eformx.com');` |
 | **`AndroidShare.reloadApp()`** | None | `void` | Refreshes and reloads the active portal URL in WebView on the UI thread | `AndroidShare.reloadApp();`                                               |
 
@@ -145,7 +156,46 @@ if (window.Android && window.Android.exitApp) {
 }
 ```
 
-#### 6. WebView Cache & Storage Management
+#### 6. Native Security, Haptic, Clipboard, Toast & Navigation APIs
+
+```javascript
+// A. Screenshot & Screen Recording Security (FLAG_SECURE)
+if (window.Android && window.Android.SafeScreen) {
+    window.Android.SafeScreen(true);  // Block screenshots & recording on sensitive pages
+    // window.Android.SafeScreen(false); // Restore normal mode
+}
+
+// B. Native Haptic Vibration
+if (window.Android && window.Android.vibrate) {
+    window.Android.vibrate(60); // 60ms subtle tactile feedback on button click
+}
+
+// C. Native Clipboard Copy & Paste
+if (window.Android && window.Android.copyToClipboard) {
+    window.Android.copyToClipboard("Application #EFX-9982");
+    let pastedText = window.Android.getFromClipboard();
+    console.log("Clipboard text:", pastedText);
+}
+
+// D. Native Android Toast Message
+if (window.Android && window.Android.showToast) {
+    window.Android.showToast("Document uploaded successfully!");
+}
+
+// E. External Browser vs In-App Navigation
+if (window.Android) {
+    // Open in Chrome Custom Tabs / External Browser:
+    window.Android.openBrowser("https://google.com");
+
+    // Open specific page inside App WebView (automatically attaches utm_source=android):
+    window.Android.openApp("https://eformx.com/dashboard");
+
+    // Bring App to foreground without reloading:
+    window.Android.openApp("");
+}
+```
+
+#### 7. WebView Cache & Storage Management
 When web developers need to flush client cache, session data, or force clean state:
 
 ```javascript

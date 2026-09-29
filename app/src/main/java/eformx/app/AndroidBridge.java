@@ -1,6 +1,8 @@
 package eformx.app;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,14 +17,19 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.telephony.TelephonyManager;
 import android.util.Log;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
@@ -32,6 +39,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
 
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Collections;
@@ -96,6 +105,173 @@ public class AndroidBridge {
                 textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tts_id");
             }
         });
+    }
+
+    @JavascriptInterface
+    public void openBrowser(String url) {
+        if (activity == null || url == null || url.trim().isEmpty()) return;
+        activity.runOnUiThread(() -> {
+            try {
+                String targetUrl = url.trim();
+                if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+                    targetUrl = "https://" + targetUrl;
+                }
+                Uri uri = Uri.parse(targetUrl);
+                CustomTabsIntent customTabsIntent = new CustomTabsIntent.Builder().build();
+                customTabsIntent.launchUrl(activity, uri);
+            } catch (Exception e) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(intent);
+                } catch (Exception ex) {
+                    Toast.makeText(activity, "Browser open karne me error aaya", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void openApp(String url) {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).openAppUrl(url);
+        }
+    }
+
+    @JavascriptInterface
+    public void openApp() {
+        openApp("");
+    }
+
+    @JavascriptInterface
+    public void SafeScreen(boolean enable) {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            try {
+                if (enable) {
+                    activity.getWindow().setFlags(
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                            WindowManager.LayoutParams.FLAG_SECURE
+                    );
+                } else {
+                    activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "SafeScreen error: " + e.getMessage());
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void vibrate(long milliseconds) {
+        if (activity == null) return;
+        try {
+            long duration = (milliseconds <= 0) ? 50 : Math.min(milliseconds, 5000);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                VibratorManager vm = (VibratorManager) activity.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                if (vm != null) {
+                    vm.getDefaultVibrator().vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
+                }
+            } else {
+                Vibrator v = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+                if (v != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        v.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
+                    } else {
+                        v.vibrate(duration);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @JavascriptInterface
+    public void vibrate() {
+        vibrate(50);
+    }
+
+    @JavascriptInterface
+    public void copyToClipboard(String text) {
+        if (activity == null || text == null) return;
+        activity.runOnUiThread(() -> {
+            try {
+                ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("eFormX Data", text);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(clip);
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    @JavascriptInterface
+    public String getFromClipboard() {
+        if (activity == null) return "";
+        try {
+            ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null && clipboard.hasPrimaryClip()) {
+                ClipData clip = clipboard.getPrimaryClip();
+                if (clip != null && clip.getItemCount() > 0) {
+                    CharSequence text = clip.getItemAt(0).getText();
+                    return text != null ? text.toString() : "";
+                }
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    @JavascriptInterface
+    public void showToast(String message) {
+        if (activity == null || message == null || message.trim().isEmpty()) return;
+        activity.runOnUiThread(() -> {
+            try {
+                Toast.makeText(activity, message.trim(), Toast.LENGTH_SHORT).show();
+            } catch (Exception ignored) {}
+        });
+    }
+
+    @JavascriptInterface
+    public void saveBase64File(String base64Data, String mimeType, String fileName) {
+        if (activity == null || base64Data == null || base64Data.trim().isEmpty()) return;
+        activity.runOnUiThread(() -> {
+            try {
+                String cleanBase64 = base64Data;
+                if (cleanBase64.contains(",")) {
+                    cleanBase64 = cleanBase64.substring(cleanBase64.indexOf(",") + 1);
+                }
+                byte[] fileBytes = android.util.Base64.decode(cleanBase64, android.util.Base64.DEFAULT);
+
+                String name = (fileName != null && !fileName.trim().isEmpty()) ? fileName.trim() : ("eFormX_Download_" + System.currentTimeMillis() + ".pdf");
+                File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+                File file = new File(downloadsDir, name);
+                FileOutputStream fos = new FileOutputStream(file);
+                fos.write(fileBytes);
+                fos.flush();
+                fos.close();
+
+                android.media.MediaScannerConnection.scanFile(
+                        activity,
+                        new String[]{file.getAbsolutePath()},
+                        new String[]{mimeType != null ? mimeType : "application/pdf"},
+                        null
+                );
+
+                Toast.makeText(activity, "File Saved in Downloads: " + name, Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Log.e(TAG, "saveBase64File error: " + e.getMessage());
+                Toast.makeText(activity, "Download failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void checkForAppUpdate() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).checkGooglePlayAppUpdate();
+        }
     }
 
     @JavascriptInterface
@@ -270,9 +446,9 @@ public class AndroidBridge {
         if (activity == null) return "";
         try {
             PackageInfo pInfo = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-            return pInfo.versionName != null ? pInfo.versionName : "1.5";
+            return pInfo.versionName != null ? pInfo.versionName : "1.9";
         } catch (Exception e) {
-            return "1.5";
+            return "1.9";
         }
     }
 
@@ -299,20 +475,33 @@ public class AndroidBridge {
     public String getIpAddress() {
         try {
             List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            // 1. Priority 1: Search for IPv6 address
             for (NetworkInterface intf : interfaces) {
                 List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
                 for (InetAddress addr : addrs) {
                     if (!addr.isLoopbackAddress()) {
                         String sAddr = addr.getHostAddress();
-                        boolean isIPv4 = sAddr.indexOf(':') < 0;
-                        if (isIPv4) {
+                        if (sAddr != null && sAddr.indexOf(':') >= 0) {
+                            int delim = sAddr.indexOf('%');
+                            return delim < 0 ? sAddr : sAddr.substring(0, delim);
+                        }
+                    }
+                }
+            }
+            // 2. Fallback: If IPv6 is not available, return IPv4
+            for (NetworkInterface intf : interfaces) {
+                List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
+                for (InetAddress addr : addrs) {
+                    if (!addr.isLoopbackAddress()) {
+                        String sAddr = addr.getHostAddress();
+                        if (sAddr != null && sAddr.indexOf(':') < 0) {
                             return sAddr;
                         }
                     }
                 }
             }
         } catch (Exception ignored) {}
-        return "127.0.0.1";
+        return "::1";
     }
 
     @JavascriptInterface
