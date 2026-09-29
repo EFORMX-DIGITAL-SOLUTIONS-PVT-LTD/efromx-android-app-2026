@@ -1094,7 +1094,8 @@ public class MainActivity extends ComponentActivity {
 
     public void openAppUrl(String rawUrl) {
         runOnUiThread(() -> {
-            if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            if (rawUrl == null || rawUrl.trim().isEmpty() || rawUrl.trim().equalsIgnoreCase("eformx://open")
+                    || rawUrl.trim().equalsIgnoreCase("eformx://") || rawUrl.trim().equalsIgnoreCase("eformx:/")) {
                 Intent bringToFront = new Intent(this, MainActivity.class);
                 bringToFront.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 startActivity(bringToFront);
@@ -1103,6 +1104,10 @@ public class MainActivity extends ComponentActivity {
 
             String targetUrl = rawUrl.trim();
             if (targetUrl.startsWith("eformx://") || targetUrl.startsWith("eformx:/")) {
+                targetUrl = parseEformxUrl(targetUrl);
+            }
+
+            if (targetUrl == null || targetUrl.trim().isEmpty()) {
                 return;
             }
 

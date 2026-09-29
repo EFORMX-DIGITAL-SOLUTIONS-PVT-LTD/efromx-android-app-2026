@@ -1111,16 +1111,29 @@
                 const input = document.getElementById('appUrlInput');
                 target = (input && input.value) ? input.value.trim() : 'https://eformx.com/dashboard';
             }
-            if (window.Android && window.Android.openApp) {
-                window.Android.openApp(target);
-                showToast(target ? '📱 Loading via Android.openApp()...' : '📲 Brought App to Foreground');
-            } else {
-                if (target) {
-                    window.location.href = target;
+
+            let eformxUrl;
+            if (target && target.trim() !== '') {
+                if (target.startsWith('eformx://')) {
+                    eformxUrl = target;
                 } else {
-                    showToast('App is already in browser');
+                    let clean = target.replace(/^https?:\/\//i, '');
+                    eformxUrl = 'eformx://' + clean;
                 }
+            } else {
+                eformxUrl = 'eformx://open';
             }
+
+            // 1. If running inside eFormX Native Android App WebView:
+            if (window.Android && window.Android.openApp) {
+                window.Android.openApp(eformxUrl);
+                showToast('📱 Loading via Android.openApp("' + eformxUrl + '")');
+                return;
+            }
+
+            // 2. If running inside External Web Browser (Chrome, Opera, etc.):
+            showToast('🚀 Launching eFormX App (' + eformxUrl + ')...');
+            window.location.href = eformxUrl;
         }
     </script>
 </body>
