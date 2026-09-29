@@ -690,6 +690,28 @@
         </div>
     </div>
 
+    <!-- SECTION 14: Native Navigation Bridges (openBrowser & openApp) -->
+    <div class="section-title">🌐 14. Native Navigation Bridges</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">🚀</span> Browser & In-App Navigation</div>
+        
+        <!-- Open Browser Bridge -->
+        <label style="font-size: 11px; color: var(--text-sub); font-weight: 600; text-transform: uppercase;">External Browser (Android.openBrowser)</label>
+        <div class="input-group" style="margin-top: 4px; margin-bottom: 14px;">
+            <input type="text" id="browserUrlInput" class="input-field" value="https://google.com">
+            <button class="btn-primary" style="width: auto; padding: 0 16px;" onclick="triggerOpenBrowser()">Open Browser</button>
+        </div>
+
+        <!-- Open App Bridge -->
+        <label style="font-size: 11px; color: var(--text-sub); font-weight: 600; text-transform: uppercase;">In-App WebView (Android.openApp)</label>
+        <div class="input-group" style="margin-top: 4px; margin-bottom: 10px;">
+            <input type="text" id="appUrlInput" class="input-field" value="https://eformx.com/dashboard">
+            <button class="btn-primary" style="width: auto; padding: 0 16px;" onclick="triggerOpenApp()">Open App</button>
+        </div>
+
+        <button class="btn-secondary" onclick="triggerOpenApp('')">📲 Bring App to Foreground: Android.openApp("")</button>
+    </div>
+
     <!-- Toast Notification Element -->
     <div id="toast">Notification Message</div>
 
@@ -1067,6 +1089,37 @@
                 window.Android.openNotificationSettings();
             } else if (type === 'all' && window.Android.requestAllPermissions) {
                 window.Android.requestAllPermissions();
+            }
+        }
+
+        // 13. Navigation Bridges (openBrowser & openApp)
+        function triggerOpenBrowser() {
+            const input = document.getElementById('browserUrlInput');
+            const url = (input && input.value) ? input.value.trim() : 'https://google.com';
+            if (window.Android && window.Android.openBrowser) {
+                window.Android.openBrowser(url);
+                showToast('🌐 Opening via Android.openBrowser()...');
+            } else {
+                window.open(url, '_blank');
+                showToast('Opened in new tab');
+            }
+        }
+
+        function triggerOpenApp(specificUrl) {
+            let target = specificUrl;
+            if (target === undefined) {
+                const input = document.getElementById('appUrlInput');
+                target = (input && input.value) ? input.value.trim() : 'https://eformx.com/dashboard';
+            }
+            if (window.Android && window.Android.openApp) {
+                window.Android.openApp(target);
+                showToast(target ? '📱 Loading via Android.openApp()...' : '📲 Brought App to Foreground');
+            } else {
+                if (target) {
+                    window.location.href = target;
+                } else {
+                    showToast('App is already in browser');
+                }
             }
         }
     </script>

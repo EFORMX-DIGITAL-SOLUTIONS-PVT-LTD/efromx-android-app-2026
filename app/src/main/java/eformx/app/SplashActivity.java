@@ -1321,12 +1321,15 @@ public class SplashActivity extends Activity {
                                             cacheSet.add(cUrl);
                                         }
                                     }
+                                    if (redirectUrl != null && !redirectUrl.trim().isEmpty()) {
+                                        cacheSet.add(redirectUrl.trim());
+                                    }
                                     editor.putStringSet("catche_url_whitelist", cacheSet);
                                     editor.putString("catche_url_json", cacheArray.toString());
                                 }
                             }
 
-                            editor.apply();
+                            editor.commit();
                         }
                     }
                 }

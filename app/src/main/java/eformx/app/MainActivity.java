@@ -81,6 +81,7 @@ public class MainActivity extends ComponentActivity {
     private Uri cameraImageUri;
     private AppUpdateManager appUpdateManager;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private boolean isVersionJustUpdated = false;
 
     private final android.os.Handler loadingWatchdogHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable loadingWatchdogRunnable = () -> {
@@ -172,26 +173,6 @@ public class MainActivity extends ComponentActivity {
         androidBridge = new AndroidBridge(this, locationPermissionLauncher);
         checkAndRequestAllPermissions();
 
-        // Auto-Cache Flush on App Version Bump or API Version Change
-        try {
-            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
-            int currentVersionCode = BuildConfig.VERSION_CODE;
-            int lastSavedVersionCode = prefs.getInt("last_saved_version_code", -1);
-            boolean apiVersionChanged = prefs.getBoolean("cache_flush_needed", false);
-
-            if (lastSavedVersionCode != currentVersionCode || apiVersionChanged) {
-                prefs.edit()
-                        .putInt("last_saved_version_code", currentVersionCode)
-                        .putBoolean("cache_flush_needed", false)
-                        .apply();
-                if (webView != null) {
-                    webView.clearCache(true);
-                }
-                android.webkit.WebStorage.getInstance().deleteAllData();
-            }
-        } catch (Exception ignored) {
-        }
-
         // Ensure any old tracking notification is cancelled
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(
@@ -247,6 +228,31 @@ public class MainActivity extends ComponentActivity {
         container.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // Auto-Cache Flush on App Version Bump or API Version Change (WebView is now ready)
+        try {
+            SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+            int currentVersionCode = BuildConfig.VERSION_CODE;
+            int lastSavedVersionCode = prefs.getInt("last_saved_version_code", -1);
+            boolean apiVersionChanged = prefs.getBoolean("cache_flush_needed", false);
+
+            if (lastSavedVersionCode != currentVersionCode || apiVersionChanged) {
+                isVersionJustUpdated = true;
+                prefs.edit()
+                        .putInt("last_saved_version_code", currentVersionCode)
+                        .putBoolean("cache_flush_needed", false)
+                        .commit();
+                if (webView != null) {
+                    webView.clearCache(true);
+                    webView.clearFormData();
+                    webView.clearHistory();
+                }
+                android.webkit.WebStorage.getInstance().deleteAllData();
+                CookieManager.getInstance().removeAllCookies(null);
+                CookieManager.getInstance().flush();
+            }
+        } catch (Exception ignored) {
+        }
 
         topProgressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         topProgressBar.setMax(100);
@@ -543,12 +549,10 @@ public class MainActivity extends ComponentActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Live Data when Online, Offline Cache when Offline
-        if (isNetworkAvailable()) {
-            webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        } else {
-            webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-        }
+        String initialStartupUrl = getIntent().hasExtra("target_url")
+                ? getIntent().getStringExtra("target_url")
+                : getSharedPreferences("eformx_prefs", MODE_PRIVATE).getString("redirect_url", "https://eformx.com/");
+        applySmartCacheStrategy(initialStartupUrl);
 
         // High Render Priority
         webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH);
@@ -786,6 +790,9 @@ public class MainActivity extends ComponentActivity {
                 }
                 if (url != null && !url.startsWith("data:")) {
                     isErrorState = false;
+                }
+                if (isVersionJustUpdated) {
+                    isVersionJustUpdated = false;
                 }
                 super.onPageFinished(view, url);
             }
@@ -1218,36 +1225,46 @@ public class MainActivity extends ComponentActivity {
             return false;
         try {
             SharedPreferences prefs = getSharedPreferences("eformx_prefs", MODE_PRIVATE);
+            // 1. redirect_url is ALWAYS whitelisted for caching
+            String redirectUrl = prefs.getString("redirect_url", "https://eformx.com/");
+            if (urlMatchesPattern(url, redirectUrl)) {
+                return true;
+            }
+
+            // 2. catche_url whitelist
             java.util.Set<String> whitelist = prefs.getStringSet("catche_url_whitelist", null);
             if (whitelist != null && !whitelist.isEmpty()) {
-                String cleanUrl = url.trim().toLowerCase();
                 for (String cachedPattern : whitelist) {
-                    if (cachedPattern == null || cachedPattern.trim().isEmpty())
-                        continue;
-                    String cleanPattern = cachedPattern.trim().toLowerCase();
-
-                    // 1. Direct or prefix match
-                    if (cleanUrl.equals(cleanPattern) || cleanUrl.startsWith(cleanPattern)
-                            || cleanPattern.startsWith(cleanUrl)) {
+                    if (urlMatchesPattern(url, cachedPattern)) {
                         return true;
                     }
-                    // 2. Domain / Host match
-                    try {
-                        Uri cachedUri = Uri.parse(cleanPattern);
-                        Uri currentUri = Uri.parse(cleanUrl);
-                        if (cachedUri.getHost() != null && currentUri.getHost() != null) {
-                            if (cachedUri.getHost().equalsIgnoreCase(currentUri.getHost())) {
-                                String cachedPath = cachedUri.getPath();
-                                String currentPath = currentUri.getPath();
-                                if (cachedPath == null || cachedPath.isEmpty() || cachedPath.equals("/")) {
-                                    return true;
-                                }
-                                if (currentPath != null && currentPath.startsWith(cachedPath)) {
-                                    return true;
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    private boolean urlMatchesPattern(String currentUrl, String pattern) {
+        if (currentUrl == null || pattern == null || pattern.trim().isEmpty())
+            return false;
+        String cleanUrl = currentUrl.trim().toLowerCase();
+        String cleanPattern = pattern.trim().toLowerCase();
+        if (cleanUrl.equals(cleanPattern) || cleanUrl.startsWith(cleanPattern) || cleanPattern.startsWith(cleanUrl)) {
+            return true;
+        }
+        try {
+            Uri cachedUri = Uri.parse(cleanPattern);
+            Uri currentUri = Uri.parse(cleanUrl);
+            if (cachedUri.getHost() != null && currentUri.getHost() != null) {
+                if (cachedUri.getHost().equalsIgnoreCase(currentUri.getHost())) {
+                    String cachedPath = cachedUri.getPath();
+                    String currentPath = currentUri.getPath();
+                    if (cachedPath == null || cachedPath.isEmpty() || cachedPath.equals("/")) {
+                        return true;
+                    }
+                    if (currentPath != null && currentPath.startsWith(cachedPath)) {
+                        return true;
                     }
                 }
             }
@@ -1266,10 +1283,15 @@ public class MainActivity extends ComponentActivity {
                 return;
             }
 
-            // Important: Only cache websites listed in catche_url
+            // If version was just updated, force fresh live network request to populate cache
+            if (isVersionJustUpdated) {
+                settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                return;
+            }
+
+            // Important: Only cache websites listed in catche_url (and redirect_url)
             if (isUrlInCacheWhitelist(url)) {
-                // In catche_url: Store and aggressively load from disk cache for super-fast
-                // speed!
+                // In catche_url: Store and aggressively load from disk cache for super-fast speed!
                 settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
             } else {
                 // Not in catche_url: Load fresh live data, do not store in cache
