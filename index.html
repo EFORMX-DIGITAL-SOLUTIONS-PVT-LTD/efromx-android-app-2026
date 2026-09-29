@@ -620,6 +620,76 @@
         </div>
     </div>
 
+    <!-- SECTION 8: Native Haptic Vibration -->
+    <div class="section-title">📳 8. Native Haptic Feedback & Vibration</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">⚡</span> Haptic Actuator</div>
+        <div class="btn-grid-3">
+            <button class="btn-secondary" onclick="triggerVibrate(30)">⚡ Light (30ms)</button>
+            <button class="btn-secondary" onclick="triggerVibrate(80)">📳 Medium (80ms)</button>
+            <button class="btn-secondary" onclick="triggerVibrate(200)">💥 Heavy (200ms)</button>
+        </div>
+    </div>
+
+    <!-- SECTION 9: Native Clipboard Manager -->
+    <div class="section-title">📋 9. Native Clipboard (Copy & Paste)</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">📝</span> Clipboard Bridge</div>
+        <div class="input-group">
+            <input type="text" id="clipboardInput" class="input-field" value="eFormX-APP-SECURE-KEY-2026">
+            <button class="btn-primary" style="width: auto; padding: 0 16px;" onclick="nativeCopy()">Copy</button>
+        </div>
+        <button class="btn-secondary" style="margin-bottom: 10px;" onclick="nativePaste()">📥 Read from Clipboard</button>
+        <div class="info-box" id="clipboardOutput" style="min-height: 40px; margin-bottom: 0;">Clipboard content will show here...</div>
+    </div>
+
+    <!-- SECTION 10: Native Android Toast -->
+    <div class="section-title">🍞 10. Native System Toast Popup</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">💬</span> Toast Notification</div>
+        <div class="input-group">
+            <input type="text" id="toastInput" class="input-field" value="आवेदन सफलतापूर्वक सबमिट हो गया है!">
+            <button class="btn-primary" style="width: auto; padding: 0 16px;" onclick="triggerNativeToast()">Show Toast</button>
+        </div>
+    </div>
+
+    <!-- SECTION 11: Screen Security (FLAG_SECURE) -->
+    <div class="section-title">🛡️ 11. Screen Privacy & Security (FLAG_SECURE)</div>
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">🔒</span> Screenshot & Recording Blocker</div>
+            <span id="safeScreenStatus" style="font-size: 11px; font-weight: 600; color: #94A3B8;">Disabled (Normal Mode)</span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            Enables Android <code>FLAG_SECURE</code> to protect banking, KYC, and sensitive forms against screenshots and screen recorders.
+        </p>
+        <button class="btn-secondary" onclick="toggleSafeScreen()">🛡️ Toggle SafeScreen Security</button>
+    </div>
+
+    <!-- SECTION 12: Base64 / Document Direct Downloader -->
+    <div class="section-title">💾 12. Native File Downloader (Downloads Folder)</div>
+    <div class="card">
+        <div class="card-title" style="margin-bottom: 12px;"><span class="icon">📥</span> Direct File Storage</div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            Saves base64 PDF, receipts, or documents directly into device <b>Downloads</b> folder and triggers system MediaScanner.
+        </p>
+        <button class="btn-primary" onclick="triggerSampleDownload()">💾 Download Sample Receipt (.txt/.pdf)</button>
+    </div>
+
+    <!-- SECTION 13: Updates, Loaders & System Settings -->
+    <div class="section-title">🚀 13. System Settings & Native Loaders</div>
+    <div class="card">
+        <div class="btn-grid" style="margin-bottom: 10px;">
+            <button class="btn-secondary" onclick="triggerCheckUpdate()">🔄 Check Play Store Update</button>
+            <button class="btn-secondary" onclick="triggerProcessLoader('kyc')">⏳ Show Native Loader</button>
+        </div>
+        <div class="btn-grid-3">
+            <button class="btn-secondary" onclick="openSettings('location')">⚙️ GPS Settings</button>
+            <button class="btn-secondary" onclick="openSettings('notification')">🔔 Notify Settings</button>
+            <button class="btn-secondary" onclick="openSettings('all')">🛡️ Request All Perms</button>
+        </div>
+    </div>
+
     <!-- Toast Notification Element -->
     <div id="toast">Notification Message</div>
 
@@ -861,6 +931,142 @@
                 if (confirm("Exit eFormX App?")) {
                     window.close();
                 }
+            }
+        }
+
+        // 7. Haptic Vibration
+        function triggerVibrate(ms) {
+            const duration = ms || 50;
+            if (window.Android && window.Android.vibrate) {
+                window.Android.vibrate(duration);
+                showToast('📳 Native Haptic: ' + duration + 'ms');
+            } else if (navigator.vibrate) {
+                navigator.vibrate(duration);
+                showToast('Web vibration: ' + duration + 'ms');
+            } else {
+                showToast('Vibration not supported on this device');
+            }
+        }
+
+        // 8. Clipboard Operations
+        function nativeCopy() {
+            const input = document.getElementById('clipboardInput');
+            const text = input ? input.value : '';
+            if (!text) {
+                showToast('Please enter text to copy');
+                return;
+            }
+            if (window.Android && window.Android.copyToClipboard) {
+                window.Android.copyToClipboard(text);
+                showToast('📋 Copied to Native Clipboard!');
+            } else {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast('📋 Copied via Web Clipboard!');
+                }).catch(() => showToast('Failed to copy'));
+            }
+        }
+
+        function nativePaste() {
+            const outBox = document.getElementById('clipboardOutput');
+            if (window.Android && window.Android.getFromClipboard) {
+                const val = window.Android.getFromClipboard();
+                if (outBox) outBox.innerText = val ? val : '(Native clipboard is empty)';
+                showToast('📋 Read from Native Clipboard!');
+            } else if (navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText().then(val => {
+                    if (outBox) outBox.innerText = val ? val : '(Clipboard is empty)';
+                    showToast('Read via Web Clipboard');
+                }).catch(() => {
+                    if (outBox) outBox.innerText = 'Web clipboard permission denied';
+                });
+            } else {
+                showToast('Clipboard read not supported');
+            }
+        }
+
+        // 9. Native Toast Popup
+        function triggerNativeToast() {
+            const input = document.getElementById('toastInput');
+            const msg = (input && input.value) ? input.value : 'Hello from eFormX!';
+            if (window.Android && window.Android.showToast) {
+                window.Android.showToast(msg);
+            } else {
+                showToast(msg);
+            }
+        }
+
+        // 10. SafeScreen Security
+        let isSafeScreenActive = false;
+        function toggleSafeScreen() {
+            isSafeScreenActive = !isSafeScreenActive;
+            if (window.Android && window.Android.SafeScreen) {
+                window.Android.SafeScreen(isSafeScreenActive);
+            }
+            const statusLabel = document.getElementById('safeScreenStatus');
+            if (statusLabel) {
+                statusLabel.innerText = isSafeScreenActive ? 'Active (Screenshots Blocked)' : 'Disabled (Normal Mode)';
+                statusLabel.style.color = isSafeScreenActive ? '#34D399' : '#94A3B8';
+            }
+            showToast(isSafeScreenActive ? '🛡️ SafeScreen ON (Screenshots blocked)' : 'SafeScreen OFF (Normal)');
+        }
+
+        // 11. Native File Download (Downloads Folder)
+        function triggerSampleDownload() {
+            const sampleReceipt = "eFormX Digital Services - Official Test Receipt\n" +
+                                 "===============================================\n" +
+                                 "Date: " + new Date().toLocaleString() + "\n" +
+                                 "Receipt No: EFX-" + Math.floor(100000 + Math.random() * 900000) + "\n" +
+                                 "Status: VERIFIED & CONFIRMED\n" +
+                                 "Channel: Android Native App WebView\n" +
+                                 "===============================================\n" +
+                                 "Thank you for using eFormX Digital Solutions!\n";
+            
+            const base64Data = btoa(unescape(encodeURIComponent(sampleReceipt)));
+            const fileName = "eFormX_Receipt_" + Date.now() + ".txt";
+
+            if (window.Android && window.Android.saveBase64File) {
+                window.Android.saveBase64File(base64Data, "text/plain", fileName);
+                showToast('💾 Saved to Downloads: ' + fileName);
+            } else {
+                const blob = new Blob([sampleReceipt], { type: 'text/plain' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = fileName;
+                link.click();
+                showToast('Downloaded via browser: ' + fileName);
+            }
+        }
+
+        // 12. Updates, Loaders & Settings
+        function triggerCheckUpdate() {
+            if (window.Android && window.Android.checkForAppUpdate) {
+                window.Android.checkForAppUpdate();
+                showToast('Checking Google Play for updates...');
+            } else {
+                showToast('Play Store update check requires Native APK');
+            }
+        }
+
+        function triggerProcessLoader(page) {
+            if (window.Android && window.Android.showProcessLoader) {
+                window.Android.showProcessLoader(page || 'processing');
+                showToast('Showing Native Process Loader...');
+            } else {
+                showToast('Process loader requires Native APK');
+            }
+        }
+
+        function openSettings(type) {
+            if (!window.Android) {
+                showToast('Settings bridge requires Native APK');
+                return;
+            }
+            if (type === 'location' && window.Android.openLocationSettings) {
+                window.Android.openLocationSettings();
+            } else if (type === 'notification' && window.Android.openNotificationSettings) {
+                window.Android.openNotificationSettings();
+            } else if (type === 'all' && window.Android.requestAllPermissions) {
+                window.Android.requestAllPermissions();
             }
         }
     </script>

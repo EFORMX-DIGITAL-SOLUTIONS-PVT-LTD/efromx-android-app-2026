@@ -187,26 +187,55 @@ if (window.Android) {
     // Open in Chrome Custom Tabs / External Browser:
     window.Android.openBrowser("https://google.com");
 
-    // Open specific page inside App WebView (automatically attaches utm_source=android):
+    // Open specific page inside App WebView (automatically attaches platform_refrence=android):
     window.Android.openApp("https://eformx.com/dashboard");
 
     // Bring App to foreground without reloading:
     window.Android.openApp("");
 }
+
+// F. Native File Downloader (Direct to phone's Public Downloads folder)
+if (window.Android && window.Android.saveBase64File) {
+    // Pass raw or data-URI base64 string, mime type, and desired filename:
+    window.Android.saveBase64File(base64DataString, "application/pdf", "receipt_1002.pdf");
+}
+
+// G. In-App Google Play Update Flow
+if (window.Android && window.Android.checkForAppUpdate) {
+    // Prompts Google Play flexible/immediate update dialog if newer APK exists:
+    window.Android.checkForAppUpdate();
+}
+
+// H. Native Full-Screen Processing Loader
+if (window.Android && window.Android.showProcessLoader) {
+    // Displays branded minimal loading animation with top progress bar:
+    window.Android.showProcessLoader("KYC Verification");
+}
+
+// I. System Settings & Permission Triggers
+if (window.Android) {
+    // Open Phone GPS Location Settings:
+    window.Android.openLocationSettings();
+
+    // Open App Notification Settings:
+    window.Android.openNotificationSettings();
+
+    // Prompt for all missing permissions (GPS, Notifications) in one call:
+    window.Android.requestAllPermissions();
+}
 ```
 
-#### 7. WebView Cache & Storage Management
-When web developers need to flush client cache, session data, or force clean state:
+#### 7. Selective Disk Caching & Version Sync
+The app implements a smart multi-tiered caching architecture driven by the backend API:
+- **Whitelisted URLs (`catche_url`):** When loaded, cached disk assets are served via `LOAD_CACHE_ELSE_NETWORK` for instantaneous loading speed.
+- **Dynamic JavaScript APIs:** Standard AJAX (`fetch`, `XMLHttpRequest`, `POST`, `PUT`) endpoints bypass static cache and always query the live server.
+- **Automatic Version Purge:** When API sends an updated `version` value or APK version updates, `webView.clearCache(true)` and `WebStorage.deleteAllData()` wipe disk storage automatically.
 
 ```javascript
-// Example: Clear web storage (localStorage, sessionStorage)
-localStorage.clear();
-sessionStorage.clear();
-
-// In Native Android (Java), cache can be flushed completely via:
-// webView.clearCache(true);
-// android.webkit.WebStorage.getInstance().deleteAllData();
-// android.webkit.CookieManager.getInstance().removeAllCookies(null);
+// Web developers can trigger an immediate cache reload:
+if (window.AndroidShare && window.AndroidShare.reloadApp) {
+    window.AndroidShare.reloadApp();
+}
 ```
 
 ---
@@ -318,6 +347,50 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
             <button class="btn btn-primary" onclick="testWebShare()">Share via Android Native Sheet</button>
             <button class="btn btn-warning" onclick="testExitApp()">Trigger Native Exit App Dialog</button>
             <div id="shareOutput" class="output-box">Status will appear here...</div>
+        </div>
+
+        <!-- 8. Native Haptic Vibration -->
+        <div class="card">
+            <h2>📳 Native Haptic Vibration</h2>
+            <button class="btn btn-primary" onclick="testVibrate(40)">Light Vibration (40ms)</button>
+            <button class="btn btn-warning" onclick="testVibrate(150)">Heavy Vibration (150ms)</button>
+        </div>
+
+        <!-- 9. Native Clipboard (Copy & Paste) -->
+        <div class="card">
+            <h2>📋 Native Clipboard Bridge</h2>
+            <div class="input-group">
+                <input type="text" id="clipInput" value="eFormX-APP-TOKEN-2026">
+                <button class="btn btn-primary" style="width: auto;" onclick="testCopy()">Copy</button>
+            </div>
+            <button class="btn btn-success" onclick="testPaste()">Paste from Clipboard</button>
+            <div id="clipOutput" class="output-box">Clipboard content will appear here...</div>
+        </div>
+
+        <!-- 10. Native Toast & SafeScreen -->
+        <div class="card">
+            <h2>🍞 Native Toast & 🛡️ SafeScreen</h2>
+            <div class="input-group">
+                <input type="text" id="toastMsg" value="नमस्ते, आवेदन सफल रहा!">
+                <button class="btn btn-primary" style="width: auto;" onclick="testToast()">Toast</button>
+            </div>
+            <button class="btn btn-warning" onclick="testSafeScreen()">Toggle FLAG_SECURE (Block Screenshots)</button>
+            <div id="safeScreenOutput" class="output-box">SafeScreen: Normal Mode</div>
+        </div>
+
+        <!-- 11. Native File Download (Downloads Folder) -->
+        <div class="card">
+            <h2>💾 Native File Downloader</h2>
+            <button class="btn btn-success" onclick="testDownloadReceipt()">Download Sample Receipt (.txt/.pdf)</button>
+            <div id="downloadOutput" class="output-box">Status will appear here...</div>
+        </div>
+
+        <!-- 12. In-App Updates & System Settings Shortcuts -->
+        <div class="card">
+            <h2>🚀 App Updates & Settings Shortcuts</h2>
+            <button class="btn btn-primary" onclick="testCheckAppUpdate()">Check Google Play Update</button>
+            <button class="btn btn-warning" onclick="testOpenLocationSettings()">Open GPS Settings</button>
+            <button class="btn btn-purple" onclick="testOpenNotificationSettings()">Open Notification Settings</button>
         </div>
 
     </div>
@@ -443,6 +516,85 @@ Web developers can save this complete HTML5 file as `index.html` on their web se
             } else {
                 alert("Android.showProcessLoader is only available inside eFormX App");
             }
+        }
+
+        function testVibrate(ms) {
+            if (isBridgeAvailable() && window.Android.vibrate) {
+                window.Android.vibrate(ms || 50);
+            } else if (navigator.vibrate) {
+                navigator.vibrate(ms || 50);
+            } else {
+                alert("Vibration not supported");
+            }
+        }
+
+        function testCopy() {
+            let text = document.getElementById('clipInput').value;
+            if (isBridgeAvailable() && window.Android.copyToClipboard) {
+                window.Android.copyToClipboard(text);
+                document.getElementById('clipOutput').innerText = "Copied to Native Clipboard: " + text;
+            } else {
+                navigator.clipboard.writeText(text);
+                document.getElementById('clipOutput').innerText = "Copied via Web Clipboard: " + text;
+            }
+        }
+
+        function testPaste() {
+            let out = document.getElementById('clipOutput');
+            if (isBridgeAvailable() && window.Android.getFromClipboard) {
+                out.innerText = "Native Clipboard Content: " + window.Android.getFromClipboard();
+            } else if (navigator.clipboard) {
+                navigator.clipboard.readText().then(t => out.innerText = "Web Clipboard: " + t);
+            }
+        }
+
+        function testToast() {
+            let msg = document.getElementById('toastMsg').value;
+            if (isBridgeAvailable() && window.Android.showToast) {
+                window.Android.showToast(msg);
+            } else {
+                alert("Toast: " + msg);
+            }
+        }
+
+        let isSafeOn = false;
+        function testSafeScreen() {
+            isSafeOn = !isSafeOn;
+            if (isBridgeAvailable() && window.Android.SafeScreen) {
+                window.Android.SafeScreen(isSafeOn);
+            }
+            document.getElementById('safeScreenOutput').innerHTML = isSafeOn
+                ? "<span class='badge-green'>ACTIVE (Screenshots Blocked)</span>"
+                : "<span class='badge-red'>DISABLED (Screenshots Allowed)</span>";
+        }
+
+        function testDownloadReceipt() {
+            let out = document.getElementById('downloadOutput');
+            let sample = "eFormX Digital Services - Official Test Receipt\nDate: " + new Date().toLocaleString();
+            let base64 = btoa(unescape(encodeURIComponent(sample)));
+            let fname = "eformx_receipt_" + Date.now() + ".txt";
+            if (isBridgeAvailable() && window.Android.saveBase64File) {
+                window.Android.saveBase64File(base64, "text/plain", fname);
+                out.innerHTML = "<span class='badge-green'>SAVED TO DOWNLOADS: " + fname + "</span>";
+            } else {
+                out.innerHTML = "saveBase64File only runs inside Native App";
+            }
+        }
+
+        function testCheckAppUpdate() {
+            if (isBridgeAvailable() && window.Android.checkForAppUpdate) {
+                window.Android.checkForAppUpdate();
+            } else {
+                alert("App Update check requires Native APK from Play Store");
+            }
+        }
+
+        function testOpenLocationSettings() {
+            if (isBridgeAvailable() && window.Android.openLocationSettings) window.Android.openLocationSettings();
+        }
+
+        function testOpenNotificationSettings() {
+            if (isBridgeAvailable() && window.Android.openNotificationSettings) window.Android.openNotificationSettings();
         }
 
         window.addEventListener('DOMContentLoaded', function() {
